@@ -115,16 +115,20 @@ export const localAuthRouter = createRouter({
       const passwordHash = await bcrypt.hash(input.password, 12);
       const unionId = `local_${input.username}`;
 
-      const result = await db.insert(users).values({
+      const [inserted] = await db.insert(users).values({
         unionId,
         name: input.name,
         email: input.email,
         passwordHash,
         avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(input.username)}`,
         role: "user",
-      });
+      }).$returningId();
 
-      const userId = Number(result.lastInsertRowid);
+      if (!inserted?.id) {
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "注册失败，请稍后重试" });
+      }
+
+      const userId = inserted.id;
       const token = await signLocalToken({ userId, username: input.username });
       setAuthCookie(ctx.resHeaders, token);
 

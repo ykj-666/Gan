@@ -1,100 +1,112 @@
-import { createClient } from "@libsql/client";
+import mysql from "mysql2/promise";
 import bcrypt from "bcryptjs";
 import * as fs from "fs";
 import * as path from "path";
+import { getDatabaseUrl } from "./database-url";
 
-function isIgnorableMigrationError(message: string) {
-  return (
-    message.includes("already exists") ||
-    message.includes("duplicate column name")
-  );
+function getMysqlConfig() {
+  const databaseUrl = new URL(getDatabaseUrl());
+  const databaseName = databaseUrl.pathname.replace(/^\/+/, "");
+
+  if (!databaseName) {
+    throw new Error("DATABASE_URL missing database name, cannot initialize MySQL");
+  }
+
+  return { databaseUrl, databaseName };
+}
+
+async function canConnectToTargetDatabase(databaseUrl: string) {
+  try {
+    const connection = await mysql.createConnection({
+      uri: databaseUrl,
+      timezone: "Z",
+    });
+
+    try {
+      await connection.query("SELECT 1");
+      return true;
+    } finally {
+      await connection.end();
+    }
+  } catch {
+    return false;
+  }
+}
+
+async function ensureDatabaseExists() {
+  const { databaseUrl, databaseName } = getMysqlConfig();
+  const targetUrl = databaseUrl.toString();
+  const adminUrl = new URL(targetUrl);
+  adminUrl.pathname = "/";
+
+  let connection: mysql.Connection | null = null;
+
+  try {
+    connection = await mysql.createConnection({
+      uri: adminUrl.toString(),
+      timezone: "Z",
+    });
+
+    await connection.query(
+      `CREATE DATABASE IF NOT EXISTS \`${databaseName}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`,
+    );
+  } catch (error) {
+    const code = (error as { code?: string }).code;
+
+    if (
+      (code === "ER_ACCESS_DENIED_ERROR" || code === "ER_DBACCESS_DENIED_ERROR") &&
+      (await canConnectToTargetDatabase(targetUrl))
+    ) {
+      return;
+    }
+
+    throw error;
+  } finally {
+    if (connection) {
+      await connection.end();
+    }
+  }
 }
 
 export async function initDatabase() {
-  const dbPath = path.join(process.cwd(), "local.db");
-  const client = createClient({ url: `file:${dbPath}` });
+  await ensureDatabaseExists();
+
+  const connection = await mysql.createConnection({
+    uri: getDatabaseUrl(),
+    timezone: "Z",
+    multipleStatements: true,
+  });
 
   try {
-    // Repair very old attendance schema before standard migrations run.
-    try {
-      const columns = await client.execute("PRAGMA table_info(attendances)");
-      const hasStartDate = columns.rows.some((row: any) => row.name === "startDate");
-      if (!hasStartDate) {
-        console.log("[DB] Old or broken attendances table detected, dropping...");
-        await client.execute("DROP TABLE IF EXISTS attendances");
-      }
-    } catch {
-      // Table absent is acceptable.
-    }
+    const initSql = fs.readFileSync(path.join(process.cwd(), "db", "mysql-init.sql"), "utf-8");
+    await connection.query(initSql);
 
-    const migrationsDir = path.join(process.cwd(), "db", "migrations");
-    const deprecatedMigrations = ["0002_update_attendance.sql"];
+    const [existingRows] = await connection.query(
+      "SELECT id FROM users WHERE unionId = ? LIMIT 1",
+      ["local_admin"],
+    );
+    const existing = existingRows as Array<{ id: number }>;
 
-    for (const file of deprecatedMigrations) {
-      const filePath = path.join(migrationsDir, file);
-      if (fs.existsSync(filePath)) {
-        console.log(`[DB] Removing deprecated migration file: ${file}`);
-        fs.unlinkSync(filePath);
-      }
-    }
-
-    const files = fs
-      .readdirSync(migrationsDir)
-      .filter((file) => file.endsWith(".sql"))
-      .sort();
-
-    for (const file of files) {
-      const migrationSql = fs.readFileSync(path.join(migrationsDir, file), "utf-8");
-      const statements = migrationSql
-        .split("--> statement-breakpoint")
-        .map((statement) => statement.trim())
-        .filter(Boolean);
-
-      for (const statement of statements) {
-        try {
-          await client.execute(statement);
-        } catch (error: any) {
-          const message = error?.message || "";
-          if (isIgnorableMigrationError(message)) {
-            console.log(`[DB] Skip: ${message}`);
-          } else {
-            throw error;
-          }
-        }
-      }
-
-      console.log(`[DB] Applied migration: ${file}`);
-    }
-
-    const existing = await client.execute({
-      sql: "SELECT 1 FROM users WHERE unionId = ? LIMIT 1",
-      args: ["local_admin"],
-    });
-
-    if (existing.rows.length === 0) {
+    if (existing.length === 0) {
       const passwordHash = await bcrypt.hash("admin123", 10);
-      const now = Math.floor(Date.now() / 1000);
-      await client.execute({
-        sql: `INSERT INTO users (unionId, name, department, email, role, passwordHash, avatar, createdAt, updatedAt, lastSignInAt)
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        args: [
+      await connection.execute(
+        `INSERT INTO users (unionId, name, department, email, role, passwordHash, avatar)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [
           "local_admin",
-          "管理员",
-          "管理部",
+          "Admin",
+          "System",
           "admin@example.com",
           "admin",
           passwordHash,
           "https://api.dicebear.com/7.x/avataaars/svg?seed=admin",
-          now,
-          now,
-          now,
         ],
-      });
+      );
       console.log("[DB] Created default admin user: admin / admin123");
     } else {
       console.log("[DB] Admin user already exists.");
     }
   } finally {
-    client.close();
+    await connection.end();
   }
 }

@@ -14,8 +14,8 @@ function ResultBlock({
   children: React.ReactNode;
 }) {
   return (
-    <section className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
-      <div className="mb-4 flex items-center justify-between">
+    <section className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm sm:p-5">
+      <div className="mb-4 flex items-center justify-between gap-3">
         <h3 className="text-base font-semibold text-gray-900">{title}</h3>
         <span className="rounded-full bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-600">
           {count}
@@ -64,14 +64,14 @@ export function SearchPage() {
 
   return (
     <>
-      <header className="flex h-[64px] items-center justify-between border-b border-gray-200 bg-white px-6">
+      <header className="border-b border-gray-200 bg-white px-4 py-4 sm:px-6">
         <div>
           <h1 className="text-lg font-bold text-gray-900">全局搜索</h1>
           <p className="text-xs text-gray-500">统一检索员工、任务、请假和出差记录</p>
         </div>
       </header>
 
-      <main className="space-y-5 px-6 pb-6">
+      <main className="space-y-5 px-4 pb-6 sm:px-6">
         <section className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
           <div className="flex items-center gap-3 rounded-xl border border-gray-300 px-4 py-3">
             <Search className="h-4 w-4 text-gray-400" />
@@ -91,7 +91,7 @@ export function SearchPage() {
 
         {!enabled ? (
           <div className="rounded-xl border border-gray-200 bg-white p-12 text-center text-gray-400 shadow-sm">
-            请输入关键字后再搜索
+            请输入关键词后再搜索
           </div>
         ) : isLoading ? (
           <div className="rounded-xl border border-gray-200 bg-white p-12 text-center text-gray-400 shadow-sm">
@@ -102,7 +102,7 @@ export function SearchPage() {
           </div>
         ) : (
           <>
-            <section className="grid gap-4 md:grid-cols-4">
+            <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
               <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
                 <p className="text-xs text-gray-500">员工结果</p>
                 <p className="mt-2 text-2xl font-bold text-gray-900">{users.length}</p>

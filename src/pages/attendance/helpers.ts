@@ -43,6 +43,7 @@ export type TripDraft = {
   cycleEnd: string;
   employeeName: string;
   department: string;
+  projectName: string;
   projectCode: string;
   dispatchStart: string;
   dispatchEnd: string;
@@ -64,6 +65,7 @@ export type RecognizedTrip = {
   dispatchStart: string;
   dispatchEnd: string;
   location: string;
+  projectName: string;
   projectCode: string;
 };
 
@@ -149,6 +151,7 @@ export function buildTripDraft(
     cycleEnd: cycle.cycleEnd,
     employeeName: seed.employeeName ?? "",
     department: seed.department ?? "",
+    projectName: seed.projectName ?? "",
     projectCode: seed.projectCode ?? "",
     dispatchStart: seed.dispatchStart ?? "",
     dispatchEnd: seed.dispatchEnd ?? "",
@@ -219,9 +222,9 @@ export function validateTrip(trip: TripDraft) {
   if (!trip.employeeName.trim()) return "员工姓名不能为空";
   if (!trip.department.trim()) return "部门不能为空";
   if (!trip.projectCode.trim()) return "项目编号不能为空";
-  if (!trip.dispatchStart) return "派遣起始日不能为空";
-  if (!trip.dispatchEnd) return "派遣结束日不能为空";
-  if (trip.dispatchStart > trip.dispatchEnd) return "派遣结束日不能早于起始日";
+  if (trip.dispatchStart && trip.dispatchEnd && trip.dispatchStart > trip.dispatchEnd) {
+    return "派遣结束日不能早于起始日";
+  }
   if (!trip.location.trim()) return "出差地点不能为空";
   if (trip.absenceDays > 0 && !trip.absenceReason.trim()) {
     return "缺勤天数大于 0 时必须填写缺勤原因";

@@ -125,12 +125,12 @@ export function TaskModal({ task, isOpen, onClose }: TaskModalProps) {
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto">
-        <DialogHeader>
+      <DialogContent className="h-[100dvh] max-h-[100dvh] max-w-[calc(100%-0.5rem)] overflow-y-auto rounded-none p-4 sm:h-auto sm:max-h-[90vh] sm:max-w-3xl sm:rounded-lg sm:p-6">
+        <DialogHeader className="border-b border-gray-100 pb-4 sm:border-b-0 sm:pb-0">
           <DialogTitle>{task ? "编辑任务" : "新建任务"}</DialogTitle>
         </DialogHeader>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-4 py-4 sm:py-0">
           <div>
             <label className="mb-1.5 block text-sm font-semibold text-gray-700">
               项目名称 <span className="text-red-500">*</span>
@@ -145,7 +145,7 @@ export function TaskModal({ task, isOpen, onClose }: TaskModalProps) {
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid gap-4 sm:grid-cols-2">
             <div>
               <label className="mb-1.5 block text-sm font-semibold text-gray-700">项目编号</label>
               <input
@@ -290,7 +290,7 @@ export function TaskModal({ task, isOpen, onClose }: TaskModalProps) {
               value={remark}
               onChange={(event) => setRemark(event.target.value)}
               placeholder="补充说明"
-              rows={3}
+              rows={4}
               className="w-full resize-none rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm text-gray-800 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
             />
           </div>
@@ -301,7 +301,7 @@ export function TaskModal({ task, isOpen, onClose }: TaskModalProps) {
             </div>
           ) : null}
 
-          <div className="flex items-center justify-end gap-3 pt-4">
+          <div className="flex flex-col-reverse gap-3 border-t border-gray-100 pt-4 sm:flex-row sm:justify-end sm:border-t-0 sm:pt-4">
             <button
               type="button"
               onClick={onClose}
@@ -312,7 +312,7 @@ export function TaskModal({ task, isOpen, onClose }: TaskModalProps) {
             <button
               type="submit"
               disabled={createTask.isPending || updateTask.isPending}
-              className="flex items-center gap-2 rounded-xl bg-blue-600 px-6 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-blue-700 disabled:opacity-60"
+              className="flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-6 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-blue-700 disabled:opacity-60"
             >
               {createTask.isPending || updateTask.isPending ? (
                 <Loader2 className="h-4 w-4 animate-spin" />

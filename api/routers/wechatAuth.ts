@@ -109,15 +109,18 @@ export const wechatAuthRouter = createRouter({
           .where(eq(users.id, userId));
       } else {
         // Create new user
-        const result = await db.insert(users).values({
+        const [inserted] = await db.insert(users).values({
           unionId,
           name: input.nickname || `微信用户${Date.now().toString().slice(-6)}`,
           avatar:
             input.avatar ??
             `https://api.dicebear.com/7.x/avataaars/svg?seed=${mockOpenid}`,
           role: "user",
-        });
-        userId = Number(result.lastInsertRowid);
+        }).$returningId();
+        if (!inserted?.id) {
+          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "User creation failed" });
+        }
+        userId = inserted.id;
       }
 
       const token = await signWechatToken({ unionId, openid: mockOpenid });
@@ -217,13 +220,16 @@ export const wechatAuthRouter = createRouter({
           })
           .where(eq(users.id, userId));
       } else {
-        const result = await db.insert(users).values({
+        const [inserted] = await db.insert(users).values({
           unionId,
           name: userData.nickname || `微信用户${Date.now().toString().slice(-6)}`,
           avatar: userData.headimgurl,
           role: "user",
-        });
-        userId = Number(result.lastInsertRowid);
+        }).$returningId();
+        if (!inserted?.id) {
+          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "User creation failed" });
+        }
+        userId = inserted.id;
       }
 
       const token = await signWechatToken({

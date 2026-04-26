@@ -1,54 +1,131 @@
-import { createClient } from "@libsql/client";
+import { loadAppEnv } from "../load-env";
+import mysql from "mysql2/promise";
+import bcrypt from "bcryptjs";
 import * as fs from "fs";
 import * as path from "path";
-import bcrypt from "bcryptjs";
+
+loadAppEnv();
+
+function getDatabaseUrl() {
+  const databaseUrl = process.env.DATABASE_URL?.trim();
+  if (!databaseUrl) {
+    throw new Error(
+      "DATABASE_URL is missing. Set a mysql:// connection string in .env, .env.local, or .env.production.local.",
+    );
+  }
+  if (!databaseUrl.startsWith("mysql://")) {
+    throw new Error("db/apply-migration.ts only supports MySQL DATABASE_URL");
+  }
+  return databaseUrl;
+}
+
+function getMysqlConfig() {
+  const databaseUrl = new URL(getDatabaseUrl());
+  const databaseName = databaseUrl.pathname.replace(/^\/+/, "");
+
+  if (!databaseName) {
+    throw new Error("DATABASE_URL is missing a database name");
+  }
+
+  return { databaseUrl, databaseName };
+}
+
+async function canConnectToTargetDatabase(databaseUrl: string) {
+  try {
+    const connection = await mysql.createConnection({
+      uri: databaseUrl,
+      timezone: "Z",
+    });
+
+    try {
+      await connection.query("SELECT 1");
+      return true;
+    } finally {
+      await connection.end();
+    }
+  } catch {
+    return false;
+  }
+}
+
+async function ensureDatabaseExists() {
+  const { databaseUrl, databaseName } = getMysqlConfig();
+  const targetUrl = databaseUrl.toString();
+  const adminUrl = new URL(targetUrl);
+  adminUrl.pathname = "/";
+
+  let connection: mysql.Connection | null = null;
+
+  try {
+    connection = await mysql.createConnection({
+      uri: adminUrl.toString(),
+      timezone: "Z",
+    });
+
+    await connection.query(
+      `CREATE DATABASE IF NOT EXISTS \`${databaseName}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`,
+    );
+  } catch (error) {
+    const code = (error as { code?: string }).code;
+
+    if (
+      (code === "ER_ACCESS_DENIED_ERROR" || code === "ER_DBACCESS_DENIED_ERROR") &&
+      (await canConnectToTargetDatabase(targetUrl))
+    ) {
+      return;
+    }
+
+    throw error;
+  } finally {
+    if (connection) {
+      await connection.end();
+    }
+  }
+}
 
 async function main() {
-  const client = createClient({ url: "file:local.db" });
+  await ensureDatabaseExists();
 
-  // Read and execute migration SQL
-  const migrationsDir = path.join(process.cwd(), "db", "migrations");
-  const files = fs.readdirSync(migrationsDir).filter(f => f.endsWith(".sql")).sort();
-
-  for (const file of files) {
-    const sql = fs.readFileSync(path.join(migrationsDir, file), "utf-8");
-    const statements = sql.split("--> statement-breakpoint").map(s => s.trim()).filter(Boolean);
-    for (const stmt of statements) {
-      await client.execute(stmt);
-    }
-    console.log(`Applied migration: ${file}`);
-  }
-
-  // Seed admin user
-  const existing = await client.execute({
-    sql: "SELECT * FROM users WHERE unionId = ?",
-    args: ["local_admin"],
+  const connection = await mysql.createConnection({
+    uri: getDatabaseUrl(),
+    timezone: "Z",
+    multipleStatements: true,
   });
 
-  if (existing.rows.length === 0) {
-    const passwordHash = await bcrypt.hash("admin123", 10);
-    await client.execute({
-      sql: `INSERT INTO users (unionId, name, email, role, passwordHash, avatar, createdAt, updatedAt, lastSignInAt)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      args: [
-        "local_admin",
-        "管理员",
-        "admin@example.com",
-        "admin",
-        passwordHash,
-        "https://api.dicebear.com/7.x/avataaars/svg?seed=admin",
-        Math.floor(Date.now() / 1000),
-        Math.floor(Date.now() / 1000),
-        Math.floor(Date.now() / 1000),
-      ],
-    });
-    console.log("Created default admin user: admin / admin123");
-  } else {
-    console.log("Admin user already exists.");
+  try {
+    const initSql = fs.readFileSync(path.join(process.cwd(), "db", "mysql-init.sql"), "utf-8");
+    await connection.query(initSql);
+
+    const [existingRows] = await connection.query(
+      "SELECT id FROM users WHERE unionId = ? LIMIT 1",
+      ["local_admin"],
+    );
+    const existing = existingRows as Array<{ id: number }>;
+
+    if (existing.length === 0) {
+      const passwordHash = await bcrypt.hash("admin123", 10);
+      await connection.execute(
+        `INSERT INTO users (unionId, name, department, email, role, passwordHash, avatar)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [
+          "local_admin",
+          "Admin",
+          "System",
+          "admin@example.com",
+          "admin",
+          passwordHash,
+          "https://api.dicebear.com/7.x/avataaars/svg?seed=admin",
+        ],
+      );
+      console.log("Created default admin user: admin / admin123");
+    } else {
+      console.log("Admin user already exists.");
+    }
+  } finally {
+    await connection.end();
   }
 
-  client.close();
-  console.log("Migration and seed completed.");
+  console.log("MySQL bootstrap completed.");
 }
 
 main().catch((err) => {

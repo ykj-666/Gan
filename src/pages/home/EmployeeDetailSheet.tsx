@@ -136,8 +136,8 @@ export function EmployeeDetailSheet({
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="w-[760px] gap-0 overflow-y-auto sm:max-w-[760px]">
-        <SheetHeader className="border-b border-gray-100 px-6 py-5">
+      <SheetContent className="w-full gap-0 overflow-y-auto border-l sm:w-[760px] sm:max-w-[760px]">
+        <SheetHeader className="border-b border-gray-100 px-4 py-5 sm:px-6">
           <SheetTitle className="text-lg">{employee?.name || "员工详情"}</SheetTitle>
           <SheetDescription>
             汇总查看任务、请假和出差情况，直接判断当前负载和异常点。
@@ -162,8 +162,8 @@ export function EmployeeDetailSheet({
             <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
           </div>
         ) : (
-          <div className="space-y-6 px-6 py-5">
-            <div className="grid grid-cols-4 gap-3">
+          <div className="space-y-6 px-4 py-5 sm:px-6">
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
               <SummaryCard label="当前负载" value={employee.currentLoad} tone="info" />
               <SummaryCard
                 label="逾期任务"
@@ -182,7 +182,7 @@ export function EmployeeDetailSheet({
               />
             </div>
 
-            <div className="grid grid-cols-4 gap-3">
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
               <SummaryCard label="近 30 天完成任务" value={recentCompletedTasks.length} />
               <SummaryCard label="近 30 天请假天数" value={recentLeaveDays} />
               <SummaryCard label="近 30 天补贴天数" value={recentTripSubsidyDays} />

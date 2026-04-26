@@ -145,41 +145,43 @@ export function TeamPage() {
 
   return (
     <>
-      <header className="flex h-[64px] items-center justify-between border-b border-gray-200 bg-white px-6">
-        <div>
-          <h1 className="text-lg font-bold text-gray-900">员工管理</h1>
-          <p className="text-xs text-gray-500">{members.length} 位员工</p>
-        </div>
+      <header className="border-b border-gray-200 bg-white px-4 py-4 sm:px-6">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <h1 className="text-lg font-bold text-gray-900">员工管理</h1>
+            <p className="text-xs text-gray-500">{members.length} 位员工</p>
+          </div>
 
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => setIsSmartOpen(true)}
-            className="flex items-center gap-2 rounded-lg border border-purple-200 bg-purple-50 px-4 py-2 text-sm font-semibold text-purple-700 transition-colors hover:bg-purple-100"
-          >
-            <Wand2 className="h-4 w-4" />
-            智能识别
-          </button>
-          <button
-            onClick={() => setIsImportOpen(true)}
-            className="flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-700 transition-colors hover:bg-gray-50"
-          >
-            <Upload className="h-4 w-4" />
-            批量导入
-          </button>
-          <button
-            onClick={() => {
-              setEditingEmployee(null);
-              setIsAddOpen(true);
-            }}
-            className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-blue-700 active:bg-blue-800"
-          >
-            <UserPlus className="h-4 w-4" />
-            添加员工
-          </button>
+          <div className="grid gap-2 sm:grid-cols-3">
+            <button
+              onClick={() => setIsSmartOpen(true)}
+              className="flex items-center justify-center gap-2 rounded-lg border border-purple-200 bg-purple-50 px-4 py-2.5 text-sm font-semibold text-purple-700 transition-colors hover:bg-purple-100"
+            >
+              <Wand2 className="h-4 w-4" />
+              智能识别
+            </button>
+            <button
+              onClick={() => setIsImportOpen(true)}
+              className="flex items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-semibold text-gray-700 transition-colors hover:bg-gray-50"
+            >
+              <Upload className="h-4 w-4" />
+              批量导入
+            </button>
+            <button
+              onClick={() => {
+                setEditingEmployee(null);
+                setIsAddOpen(true);
+              }}
+              className="flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-blue-700 active:bg-blue-800"
+            >
+              <UserPlus className="h-4 w-4" />
+              添加员工
+            </button>
+          </div>
         </div>
       </header>
 
-      <main className="space-y-4 px-6 pb-6">
+      <main className="space-y-4 px-4 pb-6 sm:px-6">
         <section className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
           <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_180px_160px]">
             <div className="relative">
@@ -247,11 +249,11 @@ export function TeamPage() {
             加载中...
           </div>
         ) : filteredMembers.length > 0 ? (
-          <div className="grid grid-cols-2 gap-4 lg:grid-cols-3 xl:grid-cols-4">
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
             {filteredMembers.map((member, index) => (
               <div
                 key={member.id}
-                className="animate-float-in rounded-xl border border-gray-200 bg-white p-5 shadow-sm transition-shadow hover:shadow-md"
+                className="animate-float-in rounded-xl border border-gray-200 bg-white p-4 shadow-sm transition-shadow hover:shadow-md sm:p-5"
                 style={{ animationDelay: `${index * 0.05}s` }}
               >
                 <button
@@ -335,7 +337,7 @@ export function TeamPage() {
                       setDetailEmployee(member);
                       syncParams({ memberId: String(member.id) });
                     }}
-                    className="rounded-lg bg-blue-50 py-1.5 text-xs font-medium text-blue-700 transition-colors hover:bg-blue-100"
+                    className="rounded-lg bg-blue-50 py-2 text-xs font-medium text-blue-700 transition-colors hover:bg-blue-100"
                   >
                     详情
                   </button>
@@ -349,14 +351,14 @@ export function TeamPage() {
                         role: member.role,
                       })
                     }
-                    className="flex items-center justify-center gap-1 rounded-lg bg-gray-50 py-1.5 text-xs font-medium text-gray-600 transition-colors hover:bg-gray-100"
+                    className="flex items-center justify-center gap-1 rounded-lg bg-gray-50 py-2 text-xs font-medium text-gray-600 transition-colors hover:bg-gray-100"
                   >
                     <Pencil className="h-3 w-3" />
                     编辑
                   </button>
                   <button
                     onClick={() => handleDelete(member.id, member.name ?? "")}
-                    className="flex items-center justify-center gap-1 rounded-lg bg-red-50 py-1.5 text-xs font-medium text-red-600 transition-colors hover:bg-red-100"
+                    className="flex items-center justify-center gap-1 rounded-lg bg-red-50 py-2 text-xs font-medium text-red-600 transition-colors hover:bg-red-100"
                   >
                     <Trash2 className="h-3 w-3" />
                     删除
@@ -384,7 +386,9 @@ export function TeamPage() {
       />
 
       <Suspense fallback={<RouteLoading label="模块加载中..." />}>
-        {isImportOpen ? <EmployeeImportModal isOpen={isImportOpen} onClose={() => setIsImportOpen(false)} /> : null}
+        {isImportOpen ? (
+          <EmployeeImportModal isOpen={isImportOpen} onClose={() => setIsImportOpen(false)} />
+        ) : null}
 
         {isSmartOpen ? (
           <SmartEmployeeRecognition isOpen={isSmartOpen} onClose={() => setIsSmartOpen(false)} />

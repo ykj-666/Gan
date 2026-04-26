@@ -29,8 +29,8 @@ function SectionCard({
         : "border-blue-200 bg-blue-50";
 
   return (
-    <section className={`rounded-xl border p-5 ${toneClass}`}>
-      <div className="mb-4 flex items-center justify-between">
+    <section className={`rounded-xl border p-4 sm:p-5 ${toneClass}`}>
+      <div className="mb-4 flex items-center justify-between gap-3">
         <div>
           <h3 className="text-base font-semibold text-gray-900">{title}</h3>
           <p className="mt-1 text-xs text-gray-500">当前筛选结果 {count} 条</p>
@@ -147,14 +147,14 @@ export function ExceptionsPage() {
 
   return (
     <>
-      <header className="flex h-[64px] items-center justify-between border-b border-gray-200 bg-white px-6">
+      <header className="border-b border-gray-200 bg-white px-4 py-4 sm:px-6">
         <div>
           <h1 className="text-lg font-bold text-gray-900">异常工作台</h1>
           <p className="text-xs text-gray-500">集中处理任务逾期、请假占用和出差异常</p>
         </div>
       </header>
 
-      <main className="space-y-5 px-6 pb-6">
+      <main className="space-y-5 px-4 pb-6 sm:px-6">
         <section className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
           <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_180px_180px]">
             <div className="relative">
@@ -326,7 +326,7 @@ export function ExceptionsPage() {
           </div>
         )}
 
-        <section className="grid gap-4 md:grid-cols-3">
+        <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
           <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
             <div className="flex items-center gap-2">
               <AlertTriangle className="h-4 w-4 text-red-500" />
@@ -343,7 +343,7 @@ export function ExceptionsPage() {
             <p className="mt-2 text-2xl font-bold text-gray-900">{activeLeaves.length}</p>
             <p className="mt-1 text-xs text-gray-500">今日请假人员占用</p>
           </div>
-          <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+          <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm sm:col-span-2 xl:col-span-1">
             <div className="flex items-center gap-2">
               <BriefcaseBusiness className="h-4 w-4 text-blue-500" />
               <p className="text-sm font-medium text-gray-900">出差异常</p>

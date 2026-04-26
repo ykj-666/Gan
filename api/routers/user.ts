@@ -63,7 +63,7 @@ export const userRouter = createRouter({
       const unionId = `import_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 
       const result = await db.transaction(async (tx) => {
-        const insertResult = await tx.insert(users).values({
+        const [inserted] = await tx.insert(users).values({
           unionId,
           name: input.name,
           department: input.department?.trim() || null,
@@ -72,9 +72,13 @@ export const userRouter = createRouter({
             input.avatar ??
             `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(input.name)}`,
           role: input.role,
-        });
+        }).$returningId();
 
-        const newId = Number(insertResult.lastInsertRowid);
+        if (!inserted?.id) {
+          throw new Error("User creation failed");
+        }
+
+        const newId = inserted.id;
 
         await createActivity(tx, {
           type: "user_created",
@@ -112,17 +116,21 @@ export const userRouter = createRouter({
         const inserted = [];
         for (const userData of input) {
           const unionId = `import_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
-          const result = await tx.insert(users).values({
+          const [created] = await tx.insert(users).values({
             unionId,
             name: userData.name,
             department: userData.department?.trim() || null,
             email: userData.email,
             avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(userData.name)}`,
             role: userData.role ?? "user",
-          });
+          }).$returningId();
+
+          if (!created?.id) {
+            throw new Error("Batch user creation failed");
+          }
 
           inserted.push({
-            id: Number(result.lastInsertRowid),
+            id: created.id,
             ...userData,
             unionId,
           });

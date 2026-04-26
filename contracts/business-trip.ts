@@ -96,10 +96,10 @@ export function calculateBusinessTripMetrics(args: {
     args.cycleEnd,
   );
 
-  const cycleWorkDays = args.workDays ?? workdaysInclusive(args.cycleStart, args.cycleEnd);
+  const cycleWorkDays = args.workDays ?? daysInclusive(args.cycleStart, args.cycleEnd);
   const tripDays =
     args.tripDays ??
-    (overlap ? workdaysInclusive(overlap.start, overlap.end) : 0);
+    (overlap ? daysInclusive(overlap.start, overlap.end) : 0);
   const tempDays = args.tempDays ?? 0;
   const officeDays =
     args.officeDays ?? Math.max(cycleWorkDays - tripDays - tempDays, 0);

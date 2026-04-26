@@ -37,7 +37,7 @@ export function MetricCards() {
 
   if (isLoading || !stats) {
     return (
-      <div className="grid grid-cols-4 gap-5">
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {[0, 1, 2, 3].map((index) => (
           <div
             key={index}
@@ -75,7 +75,7 @@ export function MetricCards() {
   };
 
   return (
-    <div className="grid grid-cols-4 gap-5">
+    <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
       {cardConfig.map((metric, index) => {
         const Icon = metric.icon;
         const value = metricMap[metric.key];
@@ -83,10 +83,10 @@ export function MetricCards() {
         return (
           <div
             key={metric.key}
-            className="animate-float-in rounded-xl border border-gray-200 bg-white p-6 shadow-sm"
+            className="animate-float-in rounded-xl border border-gray-200 bg-white p-5 shadow-sm sm:p-6"
             style={{ animationDelay: `${index * 0.08}s` }}
           >
-            <div className="mb-3 flex items-center gap-2">
+            <div className="mb-3 flex flex-wrap items-center gap-2">
               <div
                 className="flex h-8 w-8 items-center justify-center rounded-lg"
                 style={{ background: metric.bgColor }}

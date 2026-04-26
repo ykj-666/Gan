@@ -88,12 +88,12 @@ export function AddEmployeeDialog({
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-w-md">
-        <DialogHeader>
+      <DialogContent className="h-[100dvh] max-h-[100dvh] max-w-[calc(100%-0.5rem)] overflow-y-auto rounded-none p-4 sm:h-auto sm:max-h-[90vh] sm:max-w-md sm:rounded-lg sm:p-6">
+        <DialogHeader className="border-b border-gray-100 pb-4 sm:border-b-0 sm:pb-0">
           <DialogTitle>{editingEmployee ? "编辑员工" : "添加员工"}</DialogTitle>
         </DialogHeader>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-4 py-4 sm:py-0">
           <div>
             <label className="mb-1.5 block text-sm font-medium text-gray-700">
               姓名 <span className="text-red-500">*</span>
@@ -148,7 +148,7 @@ export function AddEmployeeDialog({
             </div>
           ) : null}
 
-          <div className="flex items-center justify-end gap-3 pt-2">
+          <div className="flex flex-col-reverse gap-3 border-t border-gray-100 pt-4 sm:flex-row sm:justify-end sm:border-t-0 sm:pt-2">
             <button
               type="button"
               onClick={onClose}
@@ -159,7 +159,7 @@ export function AddEmployeeDialog({
             <button
               type="submit"
               disabled={createUser.isPending || updateUser.isPending}
-              className="flex items-center gap-2 rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-blue-700 disabled:opacity-60"
+              className="flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-blue-700 disabled:opacity-60"
             >
               {createUser.isPending || updateUser.isPending ? (
                 <Loader2 className="h-4 w-4 animate-spin" />

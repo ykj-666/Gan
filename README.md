@@ -1,73 +1,68 @@
-# React + TypeScript + Vite
+# Gan
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+现场考勤 / 请假 / 出差 / 任务协同系统，前端基于 Vite + React，后端基于 Hono + tRPC，数据库已切换为 MySQL。
 
-Currently, two official plugins are available:
+## 环境变量
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+参考下面的样板：
 
-## React Compiler
-
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```env
+APP_ID=gan-app
+APP_SECRET=change-me-in-production
+DATABASE_URL=mysql://user:password@127.0.0.1:3306/gan
+KIMI_API_KEY=
+OWNER_UNION_ID=
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+`DATABASE_URL` 现在必须是 MySQL 连接串，项目不再使用 `file:local.db` 作为运行数据库。
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+## 本地启动
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+npm install
+npm run build
+npm run start
 ```
+
+开发模式：
+
+```bash
+npm install
+npm run dev
+```
+
+服务启动时会自动：
+
+- 确保 MySQL 数据库存在
+- 执行 [db/mysql-init.sql](/f:/ding/Gan/db/mysql-init.sql:1) 初始化表结构
+- 补默认管理员账号 `admin / admin123`（仅首次）
+
+## 旧数据迁移
+
+如果你之前的数据还在 SQLite / libSQL：
+
+```bash
+DATABASE_URL=mysql://user:password@127.0.0.1:3306/gan
+SQLITE_SOURCE_URL=file:local.db
+npm run db:import:sqlite
+```
+
+迁移脚本在 [db/migrate-sqlite-to-mysql.ts](/f:/ding/Gan/db/migrate-sqlite-to-mysql.ts:1)。
+
+## 生产部署
+
+部署脚本会要求服务器上的 `.env` 中提供真实的 MySQL 连接串，不会再自动创建 `local.db`。
+
+首次部署建议顺序：
+
+```bash
+1. 在服务器安装并启动 MySQL
+2. 配置 DATABASE_URL=mysql://...
+3. 部署项目
+4. 首次启动后检查默认管理员是否已创建
+5. 如需迁移旧数据，再执行 db:import:sqlite
+```
+
+部署共享逻辑在 [deploy-lib.cjs](/f:/ding/Gan/deploy-lib.cjs:1)。
+
+更完整的线上步骤见 [docs/mysql-online-deploy.md](/f:/ding/Gan/docs/mysql-online-deploy.md:1)、[docs/tencent-cloud-go-live.md](/f:/ding/Gan/docs/tencent-cloud-go-live.md:1) 和 [docs/tencent-cloud-security-group.md](/f:/ding/Gan/docs/tencent-cloud-security-group.md:1)。

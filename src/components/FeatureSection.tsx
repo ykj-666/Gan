@@ -44,13 +44,15 @@ export function FeatureSection() {
   const navigate = useNavigate();
 
   return (
-    <section className="w-full rounded-2xl border border-gray-200 bg-white px-6 py-8 lg:px-8">
+    <section className="w-full rounded-2xl border border-gray-200 bg-white px-4 py-6 sm:px-6 sm:py-8 lg:px-8">
       <div className="mb-6">
         <h2 className="text-xl font-semibold text-gray-900">管理快捷入口</h2>
-        <p className="mt-1 text-sm text-gray-500">围绕管理者日常动作收敛常用入口，减少跨模块来回查找。</p>
+        <p className="mt-1 text-sm text-gray-500">
+          围绕管理者日常动作收敛常用入口，减少跨模块来回查找。
+        </p>
       </div>
 
-      <div className="grid gap-5 lg:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {shortcuts.map((item) => {
           const Icon = item.icon;
 

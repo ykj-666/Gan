@@ -142,7 +142,12 @@ export function LeaveManagementSection() {
     });
   };
 
-  const syncParams = (next: { month?: string; userId?: string; search?: string; clearEdit?: boolean }) => {
+  const syncParams = (next: {
+    month?: string;
+    userId?: string;
+    search?: string;
+    clearEdit?: boolean;
+  }) => {
     const params = new URLSearchParams(searchParams);
     if (next.month !== undefined) {
       params.set("month", next.month);
@@ -169,14 +174,16 @@ export function LeaveManagementSection() {
 
   return (
     <div className="space-y-5">
-      <div className="rounded-2xl border border-gray-200 bg-white p-5">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+      <div className="rounded-2xl border border-gray-200 bg-white p-4 sm:p-5">
+        <div className="flex flex-col gap-4">
           <div>
             <h2 className="text-lg font-semibold text-gray-900">请假管理</h2>
-            <p className="mt-1 text-sm text-gray-500">保留请假统计、识别导入、手动录入和记录编辑能力。</p>
+            <p className="mt-1 text-sm leading-6 text-gray-500">
+              保留请假统计、识别导入、手动录入和记录编辑能力。
+            </p>
           </div>
 
-          <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-[220px_220px_repeat(2,minmax(0,1fr))]">
             <div>
               <label className="mb-1 block text-xs font-medium text-gray-500">统计月份</label>
               <select
@@ -186,7 +193,7 @@ export function LeaveManagementSection() {
                   setMonth(nextMonth);
                   syncParams({ month: nextMonth, clearEdit: true });
                 }}
-                className="min-w-[180px] rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20"
               >
                 {monthOptions.map((option) => (
                   <option key={option} value={option}>
@@ -205,7 +212,7 @@ export function LeaveManagementSection() {
                   setUserFilter(nextUserId);
                   syncParams({ userId: nextUserId, clearEdit: true });
                 }}
-                className="min-w-[180px] rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20"
               >
                 <option value="all">全部员工</option>
                 {users.map((user) => (
@@ -218,7 +225,7 @@ export function LeaveManagementSection() {
 
             <button
               onClick={() => setShowSmartRecognition(true)}
-              className="inline-flex items-center justify-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-4 py-2.5 text-sm font-semibold text-blue-700 hover:bg-blue-100"
+              className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm font-semibold text-blue-700 hover:bg-blue-100"
             >
               <Sparkles className="h-4 w-4" />
               智能识别
@@ -230,7 +237,7 @@ export function LeaveManagementSection() {
                 setShowManualDialog(true);
                 syncParams({ clearEdit: true });
               }}
-              className="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700"
+              className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-3 text-sm font-semibold text-white hover:bg-blue-700"
             >
               <Plus className="h-4 w-4" />
               添加请假
@@ -239,7 +246,7 @@ export function LeaveManagementSection() {
         </div>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard label="请假记录数" value={stats?.total ?? 0} />
         <StatCard label="病假" value={stats?.sick ?? 0} accent="text-red-600" />
         <StatCard label="年假" value={stats?.annual ?? 0} accent="text-amber-600" />
@@ -250,7 +257,7 @@ export function LeaveManagementSection() {
         />
       </div>
 
-      <div className="rounded-2xl border border-gray-200 bg-white p-5">
+      <div className="rounded-2xl border border-gray-200 bg-white p-4 sm:p-5">
         <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_220px]">
           <label className="relative block">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
@@ -272,14 +279,109 @@ export function LeaveManagementSection() {
       </div>
 
       <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white">
-        <div className="border-b border-gray-200 px-5 py-4">
+        <div className="border-b border-gray-200 px-4 py-4 sm:px-5">
           <div className="flex items-center gap-2">
             <CalendarCheck className="h-4 w-4 text-gray-500" />
             <h3 className="text-base font-semibold text-gray-900">请假记录列表</h3>
           </div>
         </div>
 
-        <div className="overflow-x-auto">
+        <div className="space-y-4 p-4 md:hidden">
+          {isLoading ? (
+            <div className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-10 text-center text-sm text-gray-400">
+              正在加载...
+            </div>
+          ) : filteredRecords.length > 0 ? (
+            filteredRecords.map((record) => {
+              const isHighlighted =
+                Number(searchParams.get("editLeaveId") || "") === record.id ||
+                editingLeaveId === record.id;
+
+              return (
+                <div
+                  key={record.id}
+                  className={`rounded-2xl border p-4 ${
+                    isHighlighted ? "border-blue-300 bg-blue-50/60" : "border-gray-200"
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-base font-semibold text-gray-900">{record.userName}</p>
+                      <p className="mt-1 text-sm text-gray-500">{record.userDepartment || "-"}</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => {
+                          setEditingLeaveId(record.id);
+                          setShowManualDialog(true);
+                        }}
+                        className="rounded-lg border border-gray-200 p-2 text-gray-600 hover:bg-gray-50"
+                        title="编辑"
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </button>
+                      <button
+                        onClick={() => {
+                          if (window.confirm("确认删除这条请假记录吗？")) {
+                            deleteMutation.mutate({ id: record.id });
+                          }
+                        }}
+                        className="rounded-lg border border-red-200 p-2 text-red-500 hover:bg-red-50"
+                        title="删除"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                    <div className="rounded-xl bg-gray-50 px-3 py-3">
+                      <p className="text-xs text-gray-500">请假类型</p>
+                      <p className="mt-1 text-sm font-medium text-gray-900">
+                        {leaveTypeLabelMap[record.type] || record.type}
+                      </p>
+                    </div>
+                    <div className="rounded-xl bg-gray-50 px-3 py-3">
+                      <p className="text-xs text-gray-500">记录状态</p>
+                      <span
+                        className={`mt-1 inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${
+                          record.status === "approved"
+                            ? "bg-emerald-50 text-emerald-700"
+                            : record.status === "rejected"
+                              ? "bg-red-50 text-red-700"
+                              : "bg-amber-50 text-amber-700"
+                        }`}
+                      >
+                        {leaveStatusLabelMap[record.status] || record.status}
+                      </span>
+                    </div>
+                    <div className="rounded-xl bg-gray-50 px-3 py-3">
+                      <p className="text-xs text-gray-500">开始日期</p>
+                      <p className="mt-1 text-sm font-medium text-gray-900">{record.startDate}</p>
+                    </div>
+                    <div className="rounded-xl bg-gray-50 px-3 py-3">
+                      <p className="text-xs text-gray-500">结束日期</p>
+                      <p className="mt-1 text-sm font-medium text-gray-900">{record.endDate}</p>
+                    </div>
+                    <div className="rounded-xl bg-gray-50 px-3 py-3 sm:col-span-2">
+                      <p className="text-xs text-gray-500">天数 / 原因</p>
+                      <p className="mt-1 text-sm font-medium text-gray-900">
+                        {record.days ?? "-"} 天
+                      </p>
+                      <p className="mt-1 text-xs text-gray-500">{record.reason || "-"}</p>
+                    </div>
+                  </div>
+                </div>
+              );
+            })
+          ) : (
+            <div className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-10 text-center text-sm text-gray-400">
+              当前筛选条件下暂无请假记录
+            </div>
+          )}
+        </div>
+
+        <div className="hidden overflow-x-auto md:block">
           <table className="min-w-full text-sm">
             <thead className="bg-gray-50 text-left text-gray-500">
               <tr>

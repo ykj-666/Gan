@@ -1,28 +1,23 @@
 /**
- * Gan 项目部署共享库
- * 被 deploy.cjs (CLI) 和 deploy-server.cjs (Web UI) 共用
+ * Gan 项目部署库
+ * 只保留线上部署必需逻辑。
  */
 
 const fs = require("fs");
 const path = require("path");
-const { execSync, spawnSync } = require("child_process");
+const { execSync } = require("child_process");
 const os = require("os");
-const http = require("http");
 
 const SERVER_IP = "118.89.134.207";
 const REMOTE_DIR = "/home/ubuntu/gan";
 const PORT = "3000";
-const GITHUB_REMOTE_NAME = "origin";
-const GITHUB_REMOTE_URL = "https://github.com/ykj-666/Gan.git";
-
-// ── SSH2 依赖管理 ──────────────────────────────────────────────
 
 function ensureSSH2(projectRoot) {
   try {
     require("ssh2");
     return true;
   } catch {
-    console.log("[首次使用] 正在安装部署依赖（约需 30 秒）...");
+    console.log("[首次使用] 正在安装部署依赖...");
     try {
       const deployDir = path.join(projectRoot, "deploy-tool");
       if (!fs.existsSync(path.join(deployDir, "node_modules"))) {
@@ -30,31 +25,34 @@ function ensureSSH2(projectRoot) {
       }
       module.paths.unshift(path.join(deployDir, "node_modules"));
       require("ssh2");
-      console.log("[OK] 依赖安装完成");
+      console.log("[OK] 部署依赖安装完成");
       return true;
-    } catch (err) {
-      console.log("[错误] 依赖安装失败: " + err.message);
+    } catch (error) {
+      console.log("[错误] 部署依赖安装失败: " + error.message);
       return false;
     }
   }
 }
 
-// ── SSH 密钥 ───────────────────────────────────────────────────
-
 function ensureSSHKey() {
   const sshDir = path.join(os.homedir(), ".ssh");
   const keyPath = path.join(sshDir, "id_ed25519");
+
   if (fs.existsSync(keyPath)) {
     return keyPath;
   }
-  console.log("[首次] 正在生成 SSH 密钥...");
-  if (!fs.existsSync(sshDir)) fs.mkdirSync(sshDir, { mode: 0o700 });
+
+  console.log("[首次使用] 正在生成 SSH 密钥...");
+  if (!fs.existsSync(sshDir)) {
+    fs.mkdirSync(sshDir, { mode: 0o700 });
+  }
+
   try {
     execSync(`ssh-keygen -t ed25519 -C "gan-deploy" -f "${keyPath}" -N ""`, { stdio: "ignore" });
     console.log("[OK] SSH 密钥生成完成");
     return keyPath;
-  } catch (err) {
-    console.log("[错误] 生成密钥失败: " + err.message);
+  } catch (error) {
+    console.log("[错误] SSH 密钥生成失败: " + error.message);
     return null;
   }
 }
@@ -68,7 +66,7 @@ async function testSSH(keyPath) {
         conn.end();
         resolve(true);
       })
-      .on("error", (err) => {
+      .on("error", () => {
         resolve(false);
       })
       .connect({
@@ -90,12 +88,13 @@ async function setupSSH(keyPath, password) {
       .on("ready", () => {
         conn.exec(
           `mkdir -p ~/.ssh && chmod 700 ~/.ssh && echo '${pubkey}' >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys`,
-          (err, stream) => {
-            if (err) {
+          (error, stream) => {
+            if (error) {
               conn.end();
-              reject(err);
+              reject(error);
               return;
             }
+
             stream.on("close", () => {
               conn.end();
               resolve();
@@ -113,244 +112,39 @@ async function setupSSH(keyPath, password) {
   });
 
   const timeoutTask = new Promise((_, reject) => {
-    setTimeout(
-      () =>
-        reject(new Error("SSH 操作超时 (30秒)，请检查网络或手动配置免密登录")),
-      30000
-    );
+    setTimeout(() => reject(new Error("SSH 操作超时，请检查网络或手动配置免密登录")), 30000);
   });
 
   await Promise.race([sshTask, timeoutTask]);
-  await new Promise((r) => setTimeout(r, 2000));
+  await new Promise((resolve) => setTimeout(resolve, 2000));
   return testSSH(keyPath);
 }
 
-// ── 本地预检 ───────────────────────────────────────────────────
-
 function getNodeVersion() {
   try {
-    const v = execSync("node --version", { encoding: "utf-8" }).trim();
-    const major = parseInt(v.slice(1).split(".")[0], 10);
-    return { raw: v, major };
+    const raw = execSync("node --version", { encoding: "utf-8" }).trim();
+    const major = Number.parseInt(raw.slice(1).split(".")[0], 10);
+    return { raw, major };
   } catch {
     return null;
   }
 }
 
 function checkNodeVersion(minMajor = 20) {
-  const ver = getNodeVersion();
-  if (!ver) {
-    return { ok: false, message: "未检测到 Node.js，请先安装" };
+  const version = getNodeVersion();
+  if (!version) {
+    return { ok: false, message: "未检测到 Node.js，请先安装 Node.js" };
   }
-  if (ver.major < minMajor) {
+
+  if (version.major < minMajor) {
     return {
       ok: false,
-      message: `Node.js 版本过低: ${ver.raw}，需要 >= v${minMajor}.0.0`,
-    };
-  }
-  return { ok: true, message: `Node.js ${ver.raw}` };
-}
-
-function checkGitStatus(projectRoot) {
-  try {
-    const status = execSync("git status --porcelain", {
-      cwd: projectRoot,
-      encoding: "utf-8",
-    }).trim();
-    if (status) {
-      return {
-        ok: false,
-        message: "检测到未提交的更改，建议先 git commit 再部署",
-        details: status,
-      };
-    }
-    return { ok: true, message: "工作区干净" };
-  } catch {
-    return { ok: true, message: "非 Git 仓库，跳过检查" };
-  }
-}
-
-function checkLocalBuild(projectRoot) {
-  try {
-    execSync("npm run build", { cwd: projectRoot, stdio: "pipe", env: { ...process.env, CI: "true" } });
-    return { ok: true, message: "本地构建成功" };
-  } catch (err) {
-    return {
-      ok: false,
-      message: "本地构建失败，请先修复后再部署",
-      details: err.message,
-    };
-  }
-}
-
-function runGitCommand(projectRoot, args, options = {}) {
-  const result = spawnSync("git", args, {
-    cwd: projectRoot,
-    encoding: "utf-8",
-    windowsHide: true,
-  });
-
-  const stdout = (result.stdout || "").trim();
-  const stderr = (result.stderr || "").trim();
-  if (result.error) {
-    throw result.error;
-  }
-
-  if (result.status !== 0 && !options.allowFailure) {
-    const message = stderr || stdout || `git ${args.join(" ")} failed with exit code ${result.status}`;
-    const error = new Error(message);
-    error.status = result.status;
-    error.stdout = stdout;
-    error.stderr = stderr;
-    throw error;
-  }
-
-  return {
-    ok: result.status === 0,
-    status: result.status || 0,
-    stdout,
-    stderr,
-  };
-}
-
-function ensureGitRepo(projectRoot) {
-  const result = runGitCommand(projectRoot, ["rev-parse", "--is-inside-work-tree"], { allowFailure: true });
-  return result.ok && result.stdout === "true";
-}
-
-function hasGitCredentialManager(projectRoot) {
-  const result = runGitCommand(projectRoot, ["credential-manager", "--version"], { allowFailure: true });
-  return result.ok;
-}
-
-function ensureGitCredentialManager(projectRoot) {
-  if (!hasGitCredentialManager(projectRoot)) {
-    return {
-      ok: false,
-      message: "未检测到 Git Credential Manager，请先安装或手动配置 GitHub 凭据",
+      message: `Node.js 版本过低: ${version.raw}，需要 >= v${minMajor}.0.0`,
     };
   }
 
-  runGitCommand(projectRoot, ["credential-manager", "configure"]);
-  return {
-    ok: true,
-    message: "已启用 Git Credential Manager",
-  };
+  return { ok: true, message: `Node.js ${version.raw}` };
 }
-
-function getGitBranch(projectRoot) {
-  const result = runGitCommand(projectRoot, ["branch", "--show-current"], { allowFailure: true });
-  return result.ok ? result.stdout.trim() : "";
-}
-
-function ensureGitHubRemote(projectRoot) {
-  if (!ensureGitRepo(projectRoot)) {
-    throw new Error("当前目录不是 Git 仓库，无法同步到 GitHub");
-  }
-
-  const remoteResult = runGitCommand(projectRoot, ["remote", "get-url", GITHUB_REMOTE_NAME], {
-    allowFailure: true,
-  });
-
-  if (!remoteResult.ok) {
-    runGitCommand(projectRoot, ["remote", "add", GITHUB_REMOTE_NAME, GITHUB_REMOTE_URL]);
-    return {
-      remoteName: GITHUB_REMOTE_NAME,
-      remoteUrl: GITHUB_REMOTE_URL,
-      changed: true,
-      message: `已添加远程仓库 ${GITHUB_REMOTE_NAME}: ${GITHUB_REMOTE_URL}`,
-    };
-  }
-
-  if (remoteResult.stdout !== GITHUB_REMOTE_URL) {
-    runGitCommand(projectRoot, ["remote", "set-url", GITHUB_REMOTE_NAME, GITHUB_REMOTE_URL]);
-    return {
-      remoteName: GITHUB_REMOTE_NAME,
-      remoteUrl: GITHUB_REMOTE_URL,
-      changed: true,
-      message: `已更新远程仓库 ${GITHUB_REMOTE_NAME}: ${GITHUB_REMOTE_URL}`,
-    };
-  }
-
-  return {
-    remoteName: GITHUB_REMOTE_NAME,
-    remoteUrl: GITHUB_REMOTE_URL,
-    changed: false,
-    message: `远程仓库已就绪: ${GITHUB_REMOTE_NAME}: ${GITHUB_REMOTE_URL}`,
-  };
-}
-
-function buildSyncCommitMessage() {
-  const stamp = new Date().toISOString().replace("T", " ").replace(/\.\d{3}Z$/, " UTC");
-  return `chore: sync to github ${stamp}`;
-}
-
-function syncToGitHub(projectRoot, write = console.log) {
-  if (!ensureGitRepo(projectRoot)) {
-    throw new Error("当前目录不是 Git 仓库，无法同步到 GitHub");
-  }
-
-  write("[1/5] 检查 GitHub 凭据管理...\n");
-  const credentialInfo = ensureGitCredentialManager(projectRoot);
-  if (!credentialInfo.ok) {
-    throw new Error(credentialInfo.message);
-  }
-  write(`[OK] ${credentialInfo.message}\n`);
-
-  write("[2/5] 检查 GitHub 远程仓库...\n");
-  const remoteInfo = ensureGitHubRemote(projectRoot);
-  write(`[OK] ${remoteInfo.message}\n`);
-
-  const branch = getGitBranch(projectRoot);
-  if (!branch) {
-    throw new Error("当前不在任何分支上，请先切回 main 后再同步");
-  }
-
-  write(`[3/5] 准备同步分支 ${branch}...\n`);
-  const statusResult = runGitCommand(projectRoot, ["status", "--porcelain"]);
-  let commitMessage = null;
-
-  if (statusResult.stdout) {
-    write("[提示] 检测到未提交改动，正在自动提交...\n");
-    runGitCommand(projectRoot, ["add", "-A"]);
-    commitMessage = buildSyncCommitMessage();
-    const commitResult = runGitCommand(projectRoot, ["commit", "-m", commitMessage], {
-      allowFailure: true,
-    });
-
-    if (!commitResult.ok) {
-      const details = commitResult.stderr || commitResult.stdout;
-      throw new Error(`自动提交失败: ${details || "请检查 git 用户信息和提交状态"}`);
-    }
-
-    write(`[OK] 已创建提交: ${commitMessage}\n`);
-  } else {
-    write("[OK] 工作区没有新的本地改动\n");
-  }
-
-  write("[4/5] 推送到 GitHub...\n");
-  const pushResult = runGitCommand(projectRoot, ["push", "-u", GITHUB_REMOTE_NAME, branch], {
-    allowFailure: true,
-  });
-
-  if (!pushResult.ok) {
-    const details = pushResult.stderr || pushResult.stdout;
-    throw new Error(`推送失败: ${details || "请检查 GitHub 登录状态或远程分支冲突"}`);
-  }
-
-  if (pushResult.stdout) write(pushResult.stdout + "\n");
-  if (pushResult.stderr) write(pushResult.stderr + "\n");
-  write(`[5/5] GitHub 同步完成: ${GITHUB_REMOTE_URL}\n`);
-
-  return {
-    branch,
-    remoteName: GITHUB_REMOTE_NAME,
-    remoteUrl: GITHUB_REMOTE_URL,
-    commitMessage,
-  };
-}
-
-// ── 打包 ───────────────────────────────────────────────────────
 
 function packProject(projectRoot) {
   const tarFile = path.join(os.tmpdir(), "gan-deploy.tar.gz");
@@ -359,37 +153,43 @@ function packProject(projectRoot) {
     ".git",
     "local.db",
     "dist",
-    ".env",
+    ".env*",
+    "*.local",
     "*.log",
     "deploy-tool",
+    ".runtime",
     "backups",
   ];
-  const excludeArgs = excludes.map((e) => `--exclude=${e}`).join(" ");
+  const excludeArgs = excludes.map((pattern) => `--exclude=${pattern}`).join(" ");
+
   execSync(`tar -czf "${tarFile}" ${excludeArgs} -C "${projectRoot}" .`, {
     stdio: "ignore",
   });
+
   const size = (fs.statSync(tarFile).size / 1024 / 1024).toFixed(2);
   return { tarFile, size };
 }
 
-// ── 上传 ───────────────────────────────────────────────────────
-
-async function upload(keyPath, tarFile, remotePath = "/tmp/gan-deploy.tar.gz") {
+async function uploadFile(keyPath, localPath, remotePath) {
   const { Client } = require("ssh2");
   return new Promise((resolve, reject) => {
     const conn = new Client();
     conn
       .on("ready", () => {
-        conn.sftp((err, sftp) => {
-          if (err) {
+        conn.sftp((error, sftp) => {
+          if (error) {
             conn.end();
-            reject(err);
+            reject(error);
             return;
           }
-          sftp.fastPut(tarFile, remotePath, (err) => {
+
+          sftp.fastPut(localPath, remotePath, (putError) => {
             conn.end();
-            if (err) reject(err);
-            else resolve();
+            if (putError) {
+              reject(putError);
+              return;
+            }
+            resolve();
           });
         });
       })
@@ -402,7 +202,31 @@ async function upload(keyPath, tarFile, remotePath = "/tmp/gan-deploy.tar.gz") {
   });
 }
 
-// ── 远程部署脚本 ───────────────────────────────────────────────
+async function upload(keyPath, tarFile, remotePath = "/tmp/gan-deploy.tar.gz") {
+  return uploadFile(keyPath, tarFile, remotePath);
+}
+
+async function uploadSharedEnv(keyPath, envFilePath, remotePath = "/tmp/gan-shared.env") {
+  return uploadFile(keyPath, envFilePath, remotePath);
+}
+
+function resolveDeployEnvPath(projectRoot) {
+  const candidates = [".env.production.local", ".env.production", ".env.local", ".env"];
+
+  for (const candidate of candidates) {
+    const fullPath = path.join(projectRoot, candidate);
+    if (!fs.existsSync(fullPath)) {
+      continue;
+    }
+
+    const content = fs.readFileSync(fullPath, "utf-8");
+    if (/^DATABASE_URL=mysql:\/\//m.test(content)) {
+      return fullPath;
+    }
+  }
+
+  return null;
+}
 
 function buildRemoteScript(options) {
   const { remoteDir, port, generateEnv } = options;
@@ -411,57 +235,63 @@ function buildRemoteScript(options) {
 
 REMOTE_DIR="${remoteDir}"
 PORT="${port}"
+SHARED_DIR="\${REMOTE_DIR}/shared"
+SHARED_ENV="\${REMOTE_DIR}/shared/.env"
+UPLOADED_ENV="/tmp/gan-shared.env"
 
-echo "[a] 检查 Node.js..."
-if ! command -v node &> /dev/null; then
-  echo "Node.js 未安装，尝试自动安装..."
+echo "[a] checking Node.js..."
+if ! command -v node >/dev/null 2>&1; then
+  echo "Node.js not found, trying automatic install..."
   if sudo -n true 2>/dev/null; then
     curl -fsSL https://deb.nodesource.com/setup_20.x | sudo bash -
     sudo apt-get install -y nodejs
   else
-    echo "错误: 没有 sudo 权限，无法自动安装 Node.js"
+    echo "Error: sudo unavailable, cannot install Node.js automatically"
     exit 1
   fi
 fi
 node -v
 
-echo "[b] 检查 PM2..."
+echo "[b] checking PM2..."
 export PATH="$HOME/.npm-global/bin:$PATH"
 PM2_BIN="$(command -v pm2 || true)"
 if [ -z "$PM2_BIN" ]; then
-  echo "PM2 未安装，正在安装到用户目录..."
   mkdir -p ~/.npm-global
   npm config set prefix '~/.npm-global'
   npm install -g pm2
   PM2_BIN="$HOME/.npm-global/bin/pm2"
 fi
 if [ ! -x "$PM2_BIN" ]; then
-  echo "错误: PM2 安装失败或不可执行"
+  echo "Error: PM2 install failed"
   exit 1
 fi
 
-echo "[c] 备份并解压代码..."
-mkdir -p "${REMOTE_DIR}"
-RELEASE_DIR="${REMOTE_DIR}/releases/$(date +%Y%m%d_%H%M%S)"
+echo "[c] unpacking release..."
+mkdir -p "$REMOTE_DIR"
+mkdir -p "$SHARED_DIR"
+RELEASE_DIR="$REMOTE_DIR/releases/$(date +%Y%m%d_%H%M%S)"
 mkdir -p "$RELEASE_DIR"
-if [ -f "${REMOTE_DIR}/local.db" ]; then
-  cp "${REMOTE_DIR}/local.db" /tmp/gan-local.db.bak
-fi
-if [ -f "${REMOTE_DIR}/.env" ]; then
-  cp "${REMOTE_DIR}/.env" /tmp/gan-dotenv.bak
+if [ -f "$SHARED_ENV" ]; then
+  cp "$SHARED_ENV" /tmp/gan-dotenv.bak
+elif [ -f "$REMOTE_DIR/current/.env" ]; then
+  cp "$REMOTE_DIR/current/.env" /tmp/gan-dotenv.bak
+elif [ -f "$REMOTE_DIR/.env" ]; then
+  cp "$REMOTE_DIR/.env" /tmp/gan-dotenv.bak
 fi
 tar -xzf /tmp/gan-deploy.tar.gz -C "$RELEASE_DIR"
-# 迁移旧数据
-if [ -f /tmp/gan-local.db.bak ]; then
-  mv /tmp/gan-local.db.bak "$RELEASE_DIR/local.db"
+if [ -f "$UPLOADED_ENV" ]; then
+  mv "$UPLOADED_ENV" "$SHARED_ENV"
 fi
-if [ -f /tmp/gan-dotenv.bak ]; then
-  mv /tmp/gan-dotenv.bak "$RELEASE_DIR/.env"
+if [ -f /tmp/gan-dotenv.bak ] && [ ! -f "$SHARED_ENV" ]; then
+  mv /tmp/gan-dotenv.bak "$SHARED_ENV"
 fi
-# 原子替换 current 软链接
-ln -sfn "$RELEASE_DIR" "${REMOTE_DIR}/current"
+if [ -f "$SHARED_ENV" ]; then
+  chmod 600 "$SHARED_ENV" || true
+  cp "$SHARED_ENV" "$RELEASE_DIR/.env"
+fi
+ln -sfn "$RELEASE_DIR" "$REMOTE_DIR/current"
 
-echo "[d] 安装依赖并构建..."
+echo "[d] installing dependencies and building..."
 cd "$RELEASE_DIR"
 if [ -f package-lock.json ]; then
   npm ci
@@ -470,57 +300,108 @@ else
 fi
 npm run build
 
-echo "[d2] 初始化数据库..."
-node db/apply-migration.cjs
-
-${generateEnv ? `echo "[d3] 检查环境变量..."
-if [ ! -f "${REMOTE_DIR}/current/.env" ]; then
-  cat > "${REMOTE_DIR}/current/.env" << 'ENVEOF'
+${generateEnv ? `echo "[d1] ensuring .env..."
+if [ ! -f "$SHARED_ENV" ]; then
+  cat > "$SHARED_ENV" << 'ENVEOF'
 APP_ID=gan-app
 APP_SECRET=change-me-in-production
+DATABASE_URL=mysql://user:password@127.0.0.1:3306/gan
 KIMI_API_KEY=
 OWNER_UNION_ID=
 ENVEOF
-  echo "已生成默认 .env，请登录服务器修改敏感配置"
+  echo "Created default .env. Configure DATABASE_URL for MySQL, then redeploy."
+  exit 1
 fi
+if ! grep -q '^DATABASE_URL=' "$SHARED_ENV"; then
+  echo "Error: DATABASE_URL missing in shared .env"
+  exit 1
+fi
+cp "$SHARED_ENV" "$REMOTE_DIR/current/.env"
 ` : ""}
 
-echo "[e] 启动服务..."
+if ! grep -Eq '^DATABASE_URL=mysql://' "$REMOTE_DIR/current/.env"; then
+  echo "Error: DATABASE_URL must be a mysql:// connection string"
+  exit 1
+fi
+
+DATABASE_URL_VALUE="$(sed -n 's/^DATABASE_URL=//p' "$REMOTE_DIR/current/.env" | tail -n 1 | tr -d '\\r')"
+
+if [ -z "$DATABASE_URL_VALUE" ]; then
+  echo "Error: DATABASE_URL is empty in $REMOTE_DIR/current/.env"
+  exit 1
+fi
+
+read DB_HOST_B64 DB_PORT_B64 DB_USER_B64 DB_PASSWORD_B64 DB_NAME_B64 <<EOF
+$(DATABASE_URL="$DATABASE_URL_VALUE" node -e "const u=new URL(process.env.DATABASE_URL); const values=[u.hostname || '127.0.0.1', u.port || '3306', decodeURIComponent(u.username), decodeURIComponent(u.password), u.pathname.replace(/^\\/+/, '')]; console.log(values.map((value) => Buffer.from(String(value)).toString('base64')).join(' '));")
+EOF
+
+decode_b64() {
+  printf '%s' "$1" | base64 --decode
+}
+
+DB_HOST="$(decode_b64 "$DB_HOST_B64")"
+DB_PORT="$(decode_b64 "$DB_PORT_B64")"
+DB_USER="$(decode_b64 "$DB_USER_B64")"
+DB_PASSWORD="$(decode_b64 "$DB_PASSWORD_B64")"
+DB_NAME="$(decode_b64 "$DB_NAME_B64")"
+
+if [ "$DB_HOST" = "127.0.0.1" ] || [ "$DB_HOST" = "localhost" ] || [ "$DB_HOST" = "::1" ]; then
+  echo "[d2] ensuring local MySQL user and database..."
+  if ! sudo -n true 2>/dev/null; then
+    echo "Error: sudo unavailable, cannot install or configure MySQL automatically"
+    exit 1
+  fi
+  DB_NAME="$DB_NAME" DB_USER="$DB_USER" DB_PASSWORD="$DB_PASSWORD" bash scripts/setup-mysql-ubuntu.sh
+else
+  echo "[d2] skipping MySQL install for remote host $DB_HOST"
+fi
+
+echo "[d3] bootstrapping MySQL..."
+DATABASE_URL="$DATABASE_URL_VALUE" node db/apply-migration.cjs
+
+echo "[e] starting service..."
 "$PM2_BIN" delete gan-app 2>/dev/null || true
-NODE_ENV=production PORT=${PORT} "$PM2_BIN" start "${REMOTE_DIR}/current/dist/boot.js" --name gan-app --cwd "${REMOTE_DIR}/current" --update-env
+DATABASE_URL="$DATABASE_URL_VALUE" NODE_ENV=production PORT=$PORT "$PM2_BIN" start "$REMOTE_DIR/current/dist/boot.js" --name gan-app --cwd "$REMOTE_DIR/current" --update-env
 "$PM2_BIN" save
 
-echo "[e2] 配置开机自恢复..."
+echo "[e2] configuring restart..."
 PM2_CRON="@reboot PATH=$HOME/.npm-global/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin $PM2_BIN resurrect >/tmp/gan-pm2-resurrect.log 2>&1"
 (crontab -l 2>/dev/null | grep -Fv "$PM2_BIN resurrect" ; echo "$PM2_CRON") | crontab -
 
-echo "[f] 等待服务启动..."
+echo "[f] waiting for startup..."
 sleep 5
 
-echo "[g] 健康检查..."
+echo "[g] health check..."
 for i in 1 2 3; do
-  if curl -sf http://127.0.0.1:${PORT}/api/trpc/health.check 2>/dev/null || curl -sf http://127.0.0.1:${PORT} 2>/dev/null; then
-    echo "[OK] 服务响应正常"
+  if curl -sf http://127.0.0.1:$PORT/api/trpc/ping 2>/dev/null || curl -sf http://127.0.0.1:$PORT 2>/dev/null; then
+    echo "[OK] service is responding"
     break
   fi
-  echo "等待中... ($i/3)"
+  echo "waiting... ($i/3)"
   sleep 3
   if [ $i -eq 3 ]; then
-    echo "[警告] 健康检查未通过，但服务可能仍在启动中"
-    echo "[诊断] PM2 日志:"
+    echo "[WARN] health check did not pass yet"
     "$PM2_BIN" logs gan-app --lines 20 --nostream 2>/dev/null || true
   fi
 done
 
 echo ""
 echo "========================================"
-echo "  部署完成!"
-echo "  访问: http://${SERVER_IP}:${PORT}"
+echo "  Deploy complete"
+echo "  Visit: http://${SERVER_IP}:${PORT}"
 echo "========================================"
 `;
 }
 
 async function remoteDeploy(keyPath, write = console.log, options = {}) {
+  const projectRoot = options.projectRoot || process.cwd();
+  const envFilePath = options.envFilePath || resolveDeployEnvPath(projectRoot);
+
+  if (envFilePath) {
+    write(`[env] uploading ${path.basename(envFilePath)} to shared server env\n`);
+    await uploadSharedEnv(keyPath, envFilePath);
+  }
+
   const script = buildRemoteScript({
     remoteDir: options.remoteDir || REMOTE_DIR,
     port: options.port || PORT,
@@ -532,20 +413,24 @@ async function remoteDeploy(keyPath, write = console.log, options = {}) {
     const conn = new Client();
     conn
       .on("ready", () => {
-        conn.exec(script, (err, stream) => {
-          if (err) {
+        conn.exec(script, (error, stream) => {
+          if (error) {
             conn.end();
-            reject(err);
+            reject(error);
             return;
           }
+
           stream
             .on("close", (code) => {
               conn.end();
-              if (code === 0) resolve();
-              else reject(new Error("远程部署退出码 " + code));
+              if (code === 0) {
+                resolve();
+                return;
+              }
+              reject(new Error("远程部署退出码 " + code));
             })
-            .on("data", (d) => write(d.toString()))
-            .stderr.on("data", (d) => write(d.toString()));
+            .on("data", (data) => write(data.toString()))
+            .stderr.on("data", (data) => write(data.toString()));
         });
       })
       .on("error", reject)
@@ -558,44 +443,19 @@ async function remoteDeploy(keyPath, write = console.log, options = {}) {
   });
 }
 
-// ── 服务器状态 ─────────────────────────────────────────────────
-
-function getServerStatus(keyPath) {
-  try {
-    const output = execSync(
-      `ssh -o BatchMode=yes -o ConnectTimeout=5 -i "${keyPath}" ubuntu@${SERVER_IP} "bash -lc 'PM2_BIN=\\$(command -v pm2 || true); if [ -x \\"\\$HOME/.npm-global/bin/pm2\\" ]; then PM2_BIN=\\"\\$HOME/.npm-global/bin/pm2\\"; fi; if [ -n \\"\\$PM2_BIN\\" ]; then \\"\\$PM2_BIN\\" status gan-app 2>/dev/null; else echo 服务未运行; fi'"`,
-      { encoding: "utf-8", timeout: 10000 }
-    );
-    return { ok: true, output: output.trim() };
-  } catch (err) {
-    return { ok: false, error: err.message };
-  }
-}
-
-// ── 导出 ───────────────────────────────────────────────────────
-
 module.exports = {
   SERVER_IP,
   REMOTE_DIR,
   PORT,
-  GITHUB_REMOTE_NAME,
-  GITHUB_REMOTE_URL,
   ensureSSH2,
   ensureSSHKey,
   testSSH,
   setupSSH,
   getNodeVersion,
   checkNodeVersion,
-  checkGitStatus,
-  checkLocalBuild,
-  ensureGitRepo,
-  hasGitCredentialManager,
-  ensureGitCredentialManager,
-  getGitBranch,
-  ensureGitHubRemote,
-  syncToGitHub,
   packProject,
   upload,
+  uploadSharedEnv,
+  resolveDeployEnvPath,
   remoteDeploy,
-  getServerStatus,
 };

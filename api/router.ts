@@ -8,6 +8,7 @@ import { wechatAuthRouter } from "./routers/wechatAuth";
 import { aiRecognitionRouter } from "./routers/ai-recognition";
 import { attendanceRouter } from "./routers/attendance";
 import { businessTripRouter } from "./routers/business-trip";
+import { systemSettingsRouter } from "./routers/system-settings";
 import { createRouter, publicQuery } from "./middleware";
 
 export const appRouter = createRouter({
@@ -22,6 +23,7 @@ export const appRouter = createRouter({
   ai: aiRecognitionRouter,
   attendance: attendanceRouter,
   businessTrip: businessTripRouter,
+  systemSettings: systemSettingsRouter,
 });
 
 export type AppRouter = typeof appRouter;

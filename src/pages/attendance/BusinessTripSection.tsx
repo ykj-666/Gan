@@ -40,6 +40,7 @@ function buildTripDraftFromRecord(record: BusinessTripRecord) {
       userId: record.userId ?? "",
       employeeName: record.employeeName,
       department: record.department,
+      projectName: record.projectName ?? "",
       projectCode: record.projectCode,
       dispatchStart: record.dispatchStart,
       dispatchEnd: record.dispatchEnd,
@@ -96,6 +97,7 @@ export function BusinessTripSection() {
   );
 
   const { data: users = [] } = trpc.user.list.useQuery();
+  const { data: tasks = [] } = trpc.task.list.useQuery();
   const { data: departments = [] } = trpc.businessTrip.departments.useQuery();
   const { data: records = [], isLoading: isListLoading } = trpc.businessTrip.list.useQuery(listParams);
   const { data: exportRecords = [], isLoading: isExportPreviewLoading } =
@@ -218,11 +220,11 @@ export function BusinessTripSection() {
 
   return (
     <div className="space-y-5">
-      <div className="rounded-2xl border border-gray-200 bg-white p-5">
+      <div className="rounded-2xl border border-gray-200 bg-white p-4 sm:p-5">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div>
             <h2 className="text-lg font-semibold text-gray-900">出差考勤统计</h2>
-            <p className="mt-1 text-sm text-gray-500">
+            <p className="mt-1 text-sm leading-6 text-gray-500">
               上传识别、数据列表和导出配置统一收口在这个模块。
             </p>
           </div>
@@ -237,27 +239,37 @@ export function BusinessTripSection() {
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList className="grid h-auto w-full grid-cols-3 rounded-xl bg-white p-1 shadow-sm">
-          <TabsTrigger value="upload" className="gap-2 py-2.5">
+          <TabsTrigger
+            value="upload"
+            className="gap-2 px-2 py-3 text-xs sm:px-3 sm:text-sm"
+          >
             <Upload className="h-4 w-4" />
-            上传识别页
+            上传识别
           </TabsTrigger>
-          <TabsTrigger value="list" className="gap-2 py-2.5">
+          <TabsTrigger
+            value="list"
+            className="gap-2 px-2 py-3 text-xs sm:px-3 sm:text-sm"
+          >
             <Building2 className="h-4 w-4" />
-            数据列表页
+            数据列表
           </TabsTrigger>
-          <TabsTrigger value="export" className="gap-2 py-2.5">
+          <TabsTrigger
+            value="export"
+            className="gap-2 px-2 py-3 text-xs sm:px-3 sm:text-sm"
+          >
             <Download className="h-4 w-4" />
-            导出配置页
+            导出配置
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="upload" className="mt-5">
+        <TabsContent value="upload" className="mt-4 sm:mt-5">
           <Suspense fallback={<RouteLoading label="上传模块加载中..." />}>
             {activeTab === "upload" ? (
               <BusinessTripUploadTab
                 cycleMonth={uploadCycleMonth}
                 onCycleMonthChange={setUploadCycleMonth}
                 users={users}
+                tasks={tasks}
                 onSaved={() => {
                   setListCycleMonth(uploadCycleMonth);
                   setExportCycleMonth(uploadCycleMonth);
@@ -269,10 +281,10 @@ export function BusinessTripSection() {
           </Suspense>
         </TabsContent>
 
-        <TabsContent value="list" className="mt-5">
+        <TabsContent value="list" className="mt-4 sm:mt-5">
           <div className="space-y-5">
-            <div className="rounded-2xl border border-gray-200 bg-white p-5">
-              <div className="grid gap-4 lg:grid-cols-[220px_220px_minmax(0,1fr)]">
+            <div className="rounded-2xl border border-gray-200 bg-white p-4 sm:p-5">
+              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-[220px_220px_minmax(0,1fr)]">
                 <div>
                   <label className="mb-1 block text-xs font-medium text-gray-500">考勤周期</label>
                   <input
@@ -283,7 +295,7 @@ export function BusinessTripSection() {
                       setListCycleMonth(nextValue);
                       syncListParams({ cycleMonth: nextValue, clearEdit: true });
                     }}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20"
                   />
                   <p className="mt-1 text-xs text-gray-500">{listCycleLabel}</p>
                 </div>
@@ -297,7 +309,7 @@ export function BusinessTripSection() {
                       setListDepartment(nextValue);
                       syncListParams({ department: nextValue, clearEdit: true });
                     }}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20"
                   >
                     <option value="">全部部门</option>
                     {departments.map((department) => (
@@ -310,7 +322,7 @@ export function BusinessTripSection() {
 
                 <div>
                   <label className="mb-1 block text-xs font-medium text-gray-500">搜索</label>
-                  <div className="flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-3 py-2">
+                  <div className="flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-3 py-2.5">
                     <Search className="h-4 w-4 text-gray-400" />
                     <input
                       value={listSearch}
@@ -328,11 +340,120 @@ export function BusinessTripSection() {
             </div>
 
             <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white">
-              <div className="border-b border-gray-200 px-5 py-4">
+              <div className="border-b border-gray-200 px-4 py-4 sm:px-5">
                 <h3 className="text-base font-semibold text-gray-900">出差考勤列表</h3>
               </div>
 
-              <div className="overflow-x-auto">
+              <div className="space-y-4 p-4 md:hidden">
+                {isListLoading ? (
+                  <div className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-10 text-center text-sm text-gray-400">
+                    正在加载...
+                  </div>
+                ) : records.length > 0 ? (
+                  records.map((record) => {
+                    const isHighlighted =
+                      Number(searchParams.get("editTripId") || "") === record.id ||
+                      editingTrip?.id === record.id;
+
+                    return (
+                      <div
+                        key={record.id}
+                        className={`rounded-2xl border p-4 ${
+                          isHighlighted ? "border-blue-300 bg-blue-50/60" : "border-gray-200"
+                        }`}
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <p className="text-base font-semibold text-gray-900">
+                              {record.employeeName}
+                            </p>
+                            <p className="mt-1 text-sm text-gray-500">{record.department}</p>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() => setEditingTrip(buildTripDraftFromRecord(record))}
+                              className="rounded-lg border border-gray-200 p-2 text-gray-600 hover:bg-gray-50"
+                              title="编辑"
+                            >
+                              <Pencil className="h-4 w-4" />
+                            </button>
+                            <button
+                              onClick={() => {
+                                if (window.confirm("确认删除这条出差考勤记录吗？")) {
+                                  deleteMutation.mutate({ id: record.id });
+                                }
+                              }}
+                              className="rounded-lg border border-red-200 p-2 text-red-500 hover:bg-red-50"
+                              title="删除"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          </div>
+                        </div>
+
+                        <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                          <div className="rounded-xl bg-gray-50 px-3 py-3">
+                            <p className="text-xs text-gray-500">项目</p>
+                            <p className="mt-1 text-sm font-medium text-gray-900">
+                              {record.projectCode}
+                            </p>
+                            <p className="mt-1 text-xs text-gray-500">
+                              {record.projectName || "未关联项目名称"}
+                            </p>
+                          </div>
+                          <div className="rounded-xl bg-gray-50 px-3 py-3">
+                            <p className="text-xs text-gray-500">出差地点</p>
+                            <p className="mt-1 text-sm font-medium text-gray-900">
+                              {record.location}
+                            </p>
+                          </div>
+                          <div className="rounded-xl bg-gray-50 px-3 py-3">
+                            <p className="text-xs text-gray-500">考勤周期</p>
+                            <p className="mt-1 text-sm font-medium text-gray-900">
+                              {record.cycleStart}
+                            </p>
+                            <p className="mt-1 text-xs text-gray-500">至 {record.cycleEnd}</p>
+                          </div>
+                          <div className="rounded-xl bg-gray-50 px-3 py-3">
+                            <p className="text-xs text-gray-500">派遣日期</p>
+                            <p className="mt-1 text-sm font-medium text-gray-900">
+                              {record.dispatchStart || "-"}
+                            </p>
+                            <p className="mt-1 text-xs text-gray-500">
+                              至 {record.dispatchEnd || "-"}
+                            </p>
+                          </div>
+                          <div className="rounded-xl bg-gray-50 px-3 py-3 sm:col-span-2">
+                            <p className="text-xs text-gray-500">出勤统计</p>
+                            <p className="mt-1 text-sm font-medium text-gray-900">
+                              应出勤 {record.workDays}，办公区 {record.officeDays}
+                            </p>
+                            <p className="mt-1 text-xs text-gray-500">
+                              长期出差 {record.tripDays}，临时外派 {record.tempDays}
+                            </p>
+                          </div>
+                          <div className="rounded-xl bg-gray-50 px-3 py-3 sm:col-span-2">
+                            <p className="text-xs text-gray-500">补贴 / 缺勤</p>
+                            <p className="mt-1 text-sm font-medium text-gray-900">
+                              补贴 {record.subsidyDays} 天
+                            </p>
+                            <p className="mt-1 text-xs text-gray-500">
+                              缺勤 {record.absenceDays}
+                              {record.absenceReason ? ` / ${record.absenceReason}` : ""}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })
+                ) : (
+                  <div className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-10 text-center text-sm text-gray-400">
+                    当前筛选条件下暂无出差考勤记录。
+                  </div>
+                )}
+              </div>
+
+              <div className="hidden overflow-x-auto md:block">
                 <table className="min-w-full text-sm">
                   <thead className="bg-gray-50 text-left text-gray-500">
                     <tr>
@@ -370,20 +491,28 @@ export function BusinessTripSection() {
                               <p className="font-medium text-gray-900">{record.employeeName}</p>
                               <p className="mt-1 text-xs text-gray-500">{record.department}</p>
                             </td>
-                            <td className="px-4 py-4 text-gray-700">{record.projectCode}</td>
+                            <td className="px-4 py-4 text-gray-700">
+                              <div>{record.projectCode}</div>
+                              <div className="mt-1 text-xs text-gray-500">
+                                {record.projectName || "-"}
+                              </div>
+                            </td>
                             <td className="px-4 py-4 text-gray-700">
                               <div>{record.cycleStart}</div>
                               <div className="text-xs text-gray-500">至 {record.cycleEnd}</div>
                             </td>
                             <td className="px-4 py-4 text-gray-700">
-                              <div>{record.dispatchStart}</div>
-                              <div className="text-xs text-gray-500">至 {record.dispatchEnd}</div>
+                              <div>{record.dispatchStart || "-"}</div>
+                              <div className="text-xs text-gray-500">
+                                至 {record.dispatchEnd || "-"}
+                              </div>
                             </td>
                             <td className="px-4 py-4 text-gray-700">{record.location}</td>
                             <td className="px-4 py-4 text-gray-700">
                               <div>应出勤 {record.workDays}</div>
                               <div className="text-xs text-gray-500">
-                                办公区 {record.officeDays} / 长差 {record.tripDays} / 外派 {record.tempDays}
+                                办公区 {record.officeDays} / 长期出差 {record.tripDays} / 临时外派{" "}
+                                {record.tempDays}
                               </div>
                             </td>
                             <td className="px-4 py-4 text-gray-700">
@@ -432,13 +561,13 @@ export function BusinessTripSection() {
           </div>
         </TabsContent>
 
-        <TabsContent value="export" className="mt-5">
+        <TabsContent value="export" className="mt-4 sm:mt-5">
           <div className="grid gap-5 xl:grid-cols-[minmax(0,0.95fr)_minmax(360px,0.75fr)]">
-            <div className="rounded-2xl border border-gray-200 bg-white p-5">
-              <div className="flex items-start justify-between gap-4">
+            <div className="rounded-2xl border border-gray-200 bg-white p-4 sm:p-5">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                 <div>
                   <h3 className="text-base font-semibold text-gray-900">导出配置</h3>
-                  <p className="mt-1 text-sm text-gray-500">
+                  <p className="mt-1 text-sm leading-6 text-gray-500">
                     按部门和考勤周期批量导出，可直接打印上交。
                   </p>
                 </div>
@@ -447,11 +576,12 @@ export function BusinessTripSection() {
                     const result = await exportMutation.mutateAsync({
                       cycleMonth: exportCycleMonth,
                       department: exportDepartment || undefined,
+                      records: exportRecords,
                     });
                     downloadBase64File(result.fileName, result.fileBase64);
                   }}
                   disabled={exportMutation.isPending}
-                  className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
+                  className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-3 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60 sm:w-auto"
                 >
                   <Download className="h-4 w-4" />
                   {exportMutation.isPending ? "导出中..." : "导出 Excel"}
@@ -465,7 +595,7 @@ export function BusinessTripSection() {
                     type="month"
                     value={exportCycleMonth}
                     onChange={(event) => setExportCycleMonth(event.target.value)}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20"
                   />
                   <p className="mt-1 text-xs text-gray-500">{exportCycleLabel}</p>
                 </div>
@@ -475,7 +605,7 @@ export function BusinessTripSection() {
                   <select
                     value={exportDepartment}
                     onChange={(event) => setExportDepartment(event.target.value)}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20"
                   >
                     <option value="">全部部门</option>
                     {departments.map((department) => (
@@ -487,18 +617,18 @@ export function BusinessTripSection() {
                 </div>
               </div>
 
-              <div className="mt-5 rounded-xl border border-dashed border-blue-200 bg-blue-50 px-4 py-4 text-sm text-blue-900">
+              <div className="mt-5 rounded-xl border border-dashed border-blue-200 bg-blue-50 px-4 py-4 text-sm leading-6 text-blue-900">
                 <p className="font-medium">导出格式包含：</p>
                 <ul className="mt-2 space-y-1">
-                  <li>顶部项目编号和考勤周期合并单元格</li>
-                  <li>表头灰底加粗并冻结首行</li>
-                  <li>长期出差相关列重点标记</li>
-                  <li>底部保留填报规则说明文字</li>
+                  <li>文件名按“现场考勤表-部门-月份.xlsx”生成</li>
+                  <li>Sheet 名按“MMDD-MMDD”生成</li>
+                  <li>按样板输出 4 行表头和长期出差重点标记</li>
+                  <li>底部附带 10 条填报规则说明</li>
                 </ul>
               </div>
             </div>
 
-            <div className="rounded-2xl border border-gray-200 bg-white p-5">
+            <div className="rounded-2xl border border-gray-200 bg-white p-4 sm:p-5">
               <div className="flex items-center gap-2">
                 <CalendarRange className="h-4 w-4 text-gray-500" />
                 <h3 className="text-base font-semibold text-gray-900">导出预览</h3>
@@ -517,7 +647,36 @@ export function BusinessTripSection() {
                 </div>
               </div>
 
-              <div className="mt-4 max-h-[420px] overflow-y-auto rounded-xl border border-gray-200">
+              <div className="mt-4 space-y-3 md:hidden">
+                {isExportPreviewLoading ? (
+                  <div className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-10 text-center text-sm text-gray-400">
+                    正在加载导出预览...
+                  </div>
+                ) : exportRecords.length > 0 ? (
+                  exportRecords.map((record) => (
+                    <div key={record.id} className="rounded-xl border border-gray-200 p-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="text-sm font-semibold text-gray-900">{record.employeeName}</p>
+                          <p className="mt-1 text-xs text-gray-500">{record.department}</p>
+                        </div>
+                        <span className="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-700">
+                          补贴 {record.subsidyDays}
+                        </span>
+                      </div>
+                      <div className="mt-3 rounded-lg bg-gray-50 px-3 py-3 text-sm text-gray-700">
+                        项目编号：{record.projectCode}
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-10 text-center text-sm text-gray-400">
+                    当前导出条件下没有数据。
+                  </div>
+                )}
+              </div>
+
+              <div className="mt-4 hidden max-h-[420px] overflow-y-auto rounded-xl border border-gray-200 md:block">
                 <table className="min-w-full text-sm">
                   <thead className="sticky top-0 bg-gray-50 text-left text-gray-500">
                     <tr>
@@ -563,6 +722,7 @@ export function BusinessTripSection() {
           <BusinessTripEditDialog
             editingTrip={editingTrip}
             users={users}
+            tasks={tasks}
             editError={editError}
             isSaving={updateMutation.isPending}
             onOpenChange={(open) => {

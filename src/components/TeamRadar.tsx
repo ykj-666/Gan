@@ -6,7 +6,7 @@ export function TeamRadar() {
 
   if (isLoading || !stats) {
     return (
-      <div className="flex h-[280px] items-center justify-center rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+      <div className="flex h-[280px] items-center justify-center rounded-xl border border-gray-200 bg-white p-4 shadow-sm sm:p-6">
         <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
       </div>
     );
@@ -23,11 +23,11 @@ export function TeamRadar() {
     .slice(0, 4);
 
   return (
-    <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+    <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm sm:p-6">
       <h3 className="mb-4 text-base font-bold text-gray-900">团队负载</h3>
 
-      <div className="mb-5 flex items-center gap-6">
-        <div className="relative h-24 w-24 flex-shrink-0">
+      <div className="mb-5 flex flex-col gap-5 sm:flex-row sm:items-center sm:gap-6">
+        <div className="relative h-24 w-24 flex-shrink-0 self-center sm:self-auto">
           <div className="h-full w-full rounded-full" style={{ background: conicGradient }} />
           <div className="absolute inset-2 flex flex-col items-center justify-center rounded-full bg-white">
             <span className="text-xl font-bold text-gray-900">{completionRate}%</span>

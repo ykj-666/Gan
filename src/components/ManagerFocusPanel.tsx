@@ -16,7 +16,7 @@ export function ManagerFocusPanel() {
 
   if (isLoading || !stats) {
     return (
-      <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+      <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm sm:p-6">
         <div className="flex h-[280px] items-center justify-center">
           <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
         </div>
@@ -27,10 +27,10 @@ export function ManagerFocusPanel() {
   const { overdueTasks, activeLeaves, tripAlerts } = stats.managerFocus;
 
   return (
-    <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+    <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm sm:p-6">
       <div className="mb-4">
         <h3 className="text-base font-bold text-gray-900">管理者待关注</h3>
-        <p className="mt-1 text-xs text-gray-500">
+        <p className="mt-1 text-xs leading-5 text-gray-500">
           把跨模块异常和在岗占用集中到一个入口，先看风险，再回到原模块处理。
         </p>
       </div>

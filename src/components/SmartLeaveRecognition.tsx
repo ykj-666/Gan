@@ -9,9 +9,7 @@ import {
   Upload,
   Wand2,
 } from "lucide-react";
-import {
-  loadManagerWorkspaceSettings,
-} from "@/lib/app-settings";
+import { loadManagerWorkspaceSettings } from "@/lib/app-settings";
 import { trpc } from "@/providers/trpc";
 import {
   Dialog,
@@ -21,11 +19,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import {
-  addDaysToDate,
-  diffDaysInclusive,
-  leaveTypeLabelMap,
-} from "@/pages/attendance/helpers";
+import { addDaysToDate, diffDaysInclusive, leaveTypeLabelMap } from "@/pages/attendance/helpers";
 
 type RecognizedLeave = {
   employeeName: string;
@@ -117,10 +111,13 @@ export default function SmartLeaveRecognition({
 }: SmartLeaveRecognitionProps) {
   const utils = trpc.useUtils();
   const recognizeMutation = trpc.ai.recognizeLeave.useMutation();
+  const recognizeTextMutation = trpc.ai.recognizeLeaveText.useMutation();
   const createLeaveMutation = trpc.attendance.create.useMutation();
 
+  const [mode, setMode] = useState<"image" | "text">("image");
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [imageBase64, setImageBase64] = useState("");
+  const [textInput, setTextInput] = useState("");
   const [rawFile, setRawFile] = useState<File | null>(null);
   const [highQuality, setHighQuality] = useState(false);
   const [leaves, setLeaves] = useState<RecognizedLeave[]>([]);
@@ -136,8 +133,10 @@ export default function SmartLeaveRecognition({
   }, []);
 
   const resetState = useCallback(() => {
+    setMode("image");
     setImagePreview(null);
     setImageBase64("");
+    setTextInput("");
     setRawFile(null);
     setLeaves([]);
     setRawText("");
@@ -154,10 +153,12 @@ export default function SmartLeaveRecognition({
 
   const handleImage = useCallback(
     async (file: File, preferHighQuality = highQuality) => {
+      setMode("image");
       setError("");
       setSaveError("");
       setLeaves([]);
       setRawText("");
+      setTextInput("");
       setRawFile(file);
 
       const reader = new FileReader();
@@ -171,7 +172,7 @@ export default function SmartLeaveRecognition({
             : await compressImage(file);
         setImageBase64(base64);
       } catch {
-        setError("截图处理失败，请重新上传。");
+        setError("截图处理失败，请重新上传");
       }
     },
     [highQuality],
@@ -221,20 +222,35 @@ export default function SmartLeaveRecognition({
   };
 
   const handleRecognize = async () => {
-    if (!imageBase64) {
-      setError("请先上传聊天截图。");
+    if (mode === "image" && !imageBase64) {
+      setError("请先上传聊天截图");
       return;
     }
+
+    if (mode === "text" && !textInput.trim()) {
+      setError("请先输入请假描述");
+      return;
+    }
+
     setError("");
     try {
-      const result = await recognizeMutation.mutateAsync({
-        imageBase64,
-      });
+      const result =
+        mode === "text"
+          ? await recognizeTextMutation.mutateAsync({
+              text: textInput.trim(),
+            })
+          : await recognizeMutation.mutateAsync({
+              imageBase64,
+            });
 
       setRawText(result.raw);
 
       if (!result.leaves.length) {
-        setError("未识别到请假记录，请更换更清晰的聊天截图。");
+        setError(
+          mode === "text"
+            ? "未识别到请假记录，请补充更完整的文字描述"
+            : "未识别到请假记录，请更换更清晰的聊天截图",
+        );
         return;
       }
 
@@ -250,7 +266,7 @@ export default function SmartLeaveRecognition({
         })),
       );
     } catch (mutationError: any) {
-      setError(mutationError.message || "请假识别失败。");
+      setError(mutationError.message || "请假识别失败");
     }
   };
 
@@ -285,7 +301,7 @@ export default function SmartLeaveRecognition({
 
     const validLeaves = leaves.filter((leave) => leave.employeeName.trim());
     if (!validLeaves.length) {
-      setSaveError("请至少保留一条包含员工姓名的请假记录。");
+      setSaveError("请至少保留一条包含员工姓名的请假记录");
       return;
     }
 
@@ -335,35 +351,85 @@ export default function SmartLeaveRecognition({
         ),
       );
 
-      await Promise.all([
-        utils.attendance.list.invalidate(),
-        utils.attendance.stats.invalidate(),
-      ]);
+      await Promise.all([utils.attendance.list.invalidate(), utils.attendance.stats.invalidate()]);
 
       onSaved?.(validLeaves);
       onClose();
     } catch (mutationError: any) {
-      setSaveError(mutationError.message || "批量保存请假记录失败。");
+      setSaveError(mutationError.message || "批量保存请假记录失败");
     } finally {
       setIsSaving(false);
     }
   };
 
+  const isRecognizing = recognizeMutation.isPending || recognizeTextMutation.isPending;
+  const validCount = leaves.filter((leave) => leave.employeeName.trim()).length;
+
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-h-[90vh] max-w-4xl overflow-y-auto">
-        <DialogHeader>
+      <DialogContent className="h-[100dvh] max-h-[100dvh] max-w-[calc(100%-0.5rem)] gap-0 overflow-y-auto rounded-none p-4 sm:h-auto sm:max-h-[90vh] sm:max-w-4xl sm:gap-4 sm:rounded-lg sm:p-6">
+        <DialogHeader className="border-b border-gray-100 pb-4 sm:border-b-0 sm:pb-0">
           <div className="flex items-center gap-2">
             <Wand2 className="h-5 w-5 text-blue-600" />
             <DialogTitle>智能识别请假记录</DialogTitle>
           </div>
           <DialogDescription>
-            上传聊天截图，识别后的请假记录可直接修正并入库。
+            支持聊天截图和文字描述两种方式，识别后的请假记录可直接修正并入库。
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-5">
-          {!imagePreview ? (
+        <div className="space-y-5 py-4 sm:py-0">
+          <div className="flex rounded-xl border border-gray-200 bg-gray-50 p-1">
+            <button
+              onClick={() => setMode("image")}
+              className={`flex-1 rounded-lg px-3 py-2.5 text-sm font-medium ${
+                mode === "image" ? "bg-white text-blue-600 shadow-sm" : "text-gray-600"
+              }`}
+            >
+              截图识别
+            </button>
+            <button
+              onClick={() => setMode("text")}
+              className={`flex-1 rounded-lg px-3 py-2.5 text-sm font-medium ${
+                mode === "text" ? "bg-white text-blue-600 shadow-sm" : "text-gray-600"
+              }`}
+            >
+              文字描述
+            </button>
+          </div>
+
+          {mode === "text" ? (
+            <div className="space-y-4">
+              <textarea
+                rows={7}
+                value={textInput}
+                onChange={(event) => {
+                  setTextInput(event.target.value);
+                  setError("");
+                  setSaveError("");
+                  setLeaves([]);
+                  setRawText("");
+                  setImagePreview(null);
+                  setImageBase64("");
+                  setRawFile(null);
+                }}
+                placeholder="例如：闫康佳4月2日开始请3天年假。"
+                className="w-full rounded-2xl border border-gray-300 px-4 py-3 text-sm leading-6 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+              />
+              <button
+                onClick={handleRecognize}
+                disabled={isRecognizing}
+                className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-3 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60 sm:w-auto"
+              >
+                {isRecognizing ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <ScanSearch className="h-4 w-4" />
+                )}
+                {isRecognizing ? "识别中..." : "开始识别"}
+              </button>
+            </div>
+          ) : !imagePreview ? (
             <div
               onDrop={(event) => {
                 event.preventDefault();
@@ -374,7 +440,7 @@ export default function SmartLeaveRecognition({
               }}
               onDragOver={(event) => event.preventDefault()}
               onClick={() => fileInputRef.current?.click()}
-              className="cursor-pointer rounded-2xl border-2 border-dashed border-gray-300 bg-gray-50 px-6 py-14 text-center hover:border-blue-400 hover:bg-blue-50/40"
+              className="cursor-pointer rounded-2xl border-2 border-dashed border-gray-300 bg-gray-50 px-5 py-10 text-center hover:border-blue-400 hover:bg-blue-50/40 sm:px-6 sm:py-14"
             >
               <input
                 ref={fileInputRef}
@@ -398,7 +464,7 @@ export default function SmartLeaveRecognition({
                 <img
                   src={imagePreview}
                   alt="leave-preview"
-                  className="mx-auto max-h-[360px] object-contain"
+                  className="mx-auto max-h-[360px] w-full object-contain"
                 />
                 <button
                   onClick={resetState}
@@ -408,7 +474,7 @@ export default function SmartLeaveRecognition({
                 </button>
               </div>
 
-              <label className="flex items-center gap-2 text-xs text-gray-600">
+              <label className="flex items-start gap-2 text-xs leading-5 text-gray-600">
                 <input
                   type="checkbox"
                   checked={highQuality}
@@ -419,22 +485,22 @@ export default function SmartLeaveRecognition({
                       void handleImage(rawFile, nextValue);
                     }
                   }}
-                  className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                  className="mt-0.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                 />
                 高清模式不压缩原图，适合长截图，建议文件小于 4MB。
               </label>
 
               <button
                 onClick={handleRecognize}
-                disabled={recognizeMutation.isPending}
-                className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
+                disabled={isRecognizing}
+                className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-3 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60 sm:w-auto"
               >
-                {recognizeMutation.isPending ? (
+                {isRecognizing ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
                 ) : (
                   <ScanSearch className="h-4 w-4" />
                 )}
-                {recognizeMutation.isPending ? "识别中..." : "开始识别"}
+                {isRecognizing ? "识别中..." : "开始识别"}
               </button>
             </div>
           )}
@@ -449,24 +515,24 @@ export default function SmartLeaveRecognition({
           {rawText ? (
             <div className="rounded-2xl border border-gray-200 bg-white p-4">
               <h3 className="text-sm font-semibold text-gray-900">识别原文</h3>
-              <pre className="mt-3 max-h-40 overflow-auto whitespace-pre-wrap rounded-lg bg-gray-50 p-3 text-xs text-gray-600">
+              <pre className="mt-3 max-h-40 overflow-auto whitespace-pre-wrap rounded-lg bg-gray-50 p-3 text-xs leading-5 text-gray-600">
                 {rawText}
               </pre>
             </div>
           ) : null}
 
           {leaves.length ? (
-            <div className="space-y-4 rounded-2xl border border-gray-200 bg-white p-5">
-              <div className="flex items-center justify-between gap-4">
+            <div className="space-y-4 rounded-2xl border border-gray-200 bg-white p-4 sm:p-5">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <h3 className="text-base font-semibold text-gray-900">识别结果预览</h3>
-                  <p className="mt-1 text-sm text-gray-500">
+                  <p className="mt-1 text-sm leading-6 text-gray-500">
                     无法匹配系统员工的记录不能直接保存，需要先手动指定员工。
                   </p>
                 </div>
                 <button
                   onClick={() => setLeaves((current) => [...current, createEmptyLeave()])}
-                  className="inline-flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                  className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-gray-200 px-3 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 sm:w-auto"
                 >
                   <Plus className="h-4 w-4" />
                   手动添加
@@ -482,7 +548,7 @@ export default function SmartLeaveRecognition({
                       key={`${leave.employeeName}-${leave.startDate}-${index}`}
                       className="rounded-2xl border border-gray-200 p-4"
                     >
-                      <div className="mb-4 flex items-center justify-between">
+                      <div className="mb-4 flex items-center justify-between gap-3">
                         <p className="text-sm font-semibold text-gray-900">记录 {index + 1}</p>
                         <button
                           onClick={() =>
@@ -497,7 +563,7 @@ export default function SmartLeaveRecognition({
                         </button>
                       </div>
 
-                      <div className="grid gap-4 md:grid-cols-2">
+                      <div className="grid gap-4 sm:grid-cols-2">
                         <div>
                           <label className="mb-1 block text-xs font-medium text-gray-500">
                             员工姓名
@@ -514,7 +580,7 @@ export default function SmartLeaveRecognition({
                             onChange={(event) =>
                               updateLeave(index, "employeeName", event.target.value)
                             }
-                            className={`w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 ${
+                            className={`w-full rounded-lg border px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 ${
                               matchStatus === "unmatched"
                                 ? "border-red-300 bg-red-50"
                                 : "border-gray-300"
@@ -544,7 +610,9 @@ export default function SmartLeaveRecognition({
                         </div>
 
                         <div>
-                          <label className="mb-1 block text-xs font-medium text-gray-500">请假类型</label>
+                          <label className="mb-1 block text-xs font-medium text-gray-500">
+                            请假类型
+                          </label>
                           <select
                             value={leave.type}
                             onChange={(event) =>
@@ -554,7 +622,7 @@ export default function SmartLeaveRecognition({
                                 event.target.value as RecognizedLeave["type"],
                               )
                             }
-                            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                            className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20"
                           >
                             {leaveTypeOptions.map(([value, label]) => (
                               <option key={value} value={value}>
@@ -565,31 +633,35 @@ export default function SmartLeaveRecognition({
                         </div>
 
                         <div>
-                          <label className="mb-1 block text-xs font-medium text-gray-500">开始日期</label>
+                          <label className="mb-1 block text-xs font-medium text-gray-500">
+                            开始日期
+                          </label>
                           <input
                             type="date"
                             value={leave.startDate}
                             onChange={(event) =>
                               updateLeave(index, "startDate", event.target.value)
                             }
-                            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                            className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20"
                           />
                         </div>
 
                         <div>
-                          <label className="mb-1 block text-xs font-medium text-gray-500">结束日期</label>
+                          <label className="mb-1 block text-xs font-medium text-gray-500">
+                            结束日期
+                          </label>
                           <input
                             type="date"
                             value={leave.endDate}
-                            onChange={(event) =>
-                              updateLeave(index, "endDate", event.target.value)
-                            }
-                            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                            onChange={(event) => updateLeave(index, "endDate", event.target.value)}
+                            className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20"
                           />
                         </div>
 
                         <div>
-                          <label className="mb-1 block text-xs font-medium text-gray-500">请假天数</label>
+                          <label className="mb-1 block text-xs font-medium text-gray-500">
+                            请假天数
+                          </label>
                           <input
                             type="number"
                             min={0.5}
@@ -598,33 +670,35 @@ export default function SmartLeaveRecognition({
                             onChange={(event) =>
                               updateLeave(index, "days", Number(event.target.value) || 1)
                             }
-                            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                            className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20"
                           />
                         </div>
 
                         <div>
-                          <label className="mb-1 block text-xs font-medium text-gray-500">记录状态</label>
+                          <label className="mb-1 block text-xs font-medium text-gray-500">
+                            记录状态
+                          </label>
                           <select
                             value={leave.approved ? "approved" : "pending"}
                             onChange={(event) =>
                               updateLeave(index, "approved", event.target.value === "approved")
                             }
-                            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                            className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20"
                           >
                             <option value="approved">已确认</option>
                             <option value="pending">待确认</option>
                           </select>
                         </div>
 
-                        <div className="md:col-span-2">
-                          <label className="mb-1 block text-xs font-medium text-gray-500">请假原因</label>
+                        <div className="sm:col-span-2">
+                          <label className="mb-1 block text-xs font-medium text-gray-500">
+                            请假原因
+                          </label>
                           <input
                             type="text"
                             value={leave.reason}
-                            onChange={(event) =>
-                              updateLeave(index, "reason", event.target.value)
-                            }
-                            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                            onChange={(event) => updateLeave(index, "reason", event.target.value)}
+                            className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20"
                           />
                         </div>
                       </div>
@@ -636,29 +710,27 @@ export default function SmartLeaveRecognition({
           ) : null}
 
           {saveError ? (
-            <div className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700 whitespace-pre-line">
+            <div className="flex items-start gap-2 whitespace-pre-line rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
               <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0" />
               <span>{saveError}</span>
             </div>
           ) : null}
         </div>
 
-        <DialogFooter>
+        <DialogFooter className="border-t border-gray-100 pt-4 sm:border-t-0 sm:pt-0">
           <button
             onClick={onClose}
-            className="rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+            className="w-full rounded-lg border border-gray-200 px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 sm:w-auto"
           >
             取消
           </button>
           <button
             onClick={handleSaveAll}
             disabled={isSaving || !leaves.length}
-            className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
+            className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60 sm:w-auto"
           >
             {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-            {isSaving
-              ? "保存中..."
-              : `保存 ${leaves.filter((leave) => leave.employeeName.trim()).length} 条记录`}
+            {isSaving ? "保存中..." : `保存 ${validCount} 条记录`}
           </button>
         </DialogFooter>
       </DialogContent>

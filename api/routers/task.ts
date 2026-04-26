@@ -116,7 +116,7 @@ export const taskRouter = createRouter({
     const userId = ctx.user.id;
 
     const result = await db.transaction(async (tx) => {
-      const insertResult = await tx.insert(tasks).values({
+      const [inserted] = await tx.insert(tasks).values({
         projectName: input.projectName.trim(),
         projectCode: input.projectCode?.trim() || null,
         projectType: input.projectType?.trim() || null,
@@ -130,9 +130,13 @@ export const taskRouter = createRouter({
         estimatedHours: input.estimatedHours,
         remark: input.remark?.trim() || null,
         creatorId: userId,
-      });
+      }).$returningId();
 
-      const taskId = Number(insertResult.lastInsertRowid);
+      if (!inserted?.id) {
+        throw new Error("Task creation failed");
+      }
+
+      const taskId = inserted.id;
 
       await createActivity(tx, {
         type: "task_created",

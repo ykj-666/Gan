@@ -17,17 +17,19 @@ export function ReportsPage() {
 
   const leaveRange = useMemo(() => getMonthDateRange(leaveMonth), [leaveMonth]);
   const { data: stats } = trpc.stats.dashboard.useQuery();
-  const { data: summary } = trpc.stats.reportSummary.useQuery({
+  const { data: summary, isFetching: isSummaryFetching } = trpc.stats.reportSummary.useQuery({
     cycleMonth,
     leaveMonth,
     department: department === "all" ? undefined : department,
   });
-  const { data: leaveRecords = [] } = trpc.attendance.list.useQuery(leaveRange);
-  const { data: tripRecords = [] } = trpc.businessTrip.list.useQuery({
+  const { data: leaveRecords = [], isFetching: isLeaveFetching } = trpc.attendance.list.useQuery(
+    leaveRange,
+  );
+  const { data: tripRecords = [], isFetching: isTripFetching } = trpc.businessTrip.list.useQuery({
     cycleMonth,
     department: department === "all" ? undefined : department,
   });
-  const { data: tasks = [] } = trpc.task.list.useQuery();
+  const { data: tasks = [], isFetching: isTaskFetching } = trpc.task.list.useQuery();
   const exportTripMutation = trpc.businessTrip.exportXlsx.useMutation();
 
   const members = stats?.memberStats ?? [];
@@ -43,7 +45,10 @@ export function ReportsPage() {
     [members],
   );
 
-  const taskMemberMap = useMemo(() => new Map(members.map((member) => [member.id, member])), [members]);
+  const taskMemberMap = useMemo(
+    () => new Map(members.map((member) => [member.id, member])),
+    [members],
+  );
 
   const filteredTaskRows = useMemo(() => {
     return tasks.filter((task) => {
@@ -137,7 +142,11 @@ export function ReportsPage() {
     if (!summary) return;
 
     const rows: Array<Array<string | number>> = [
-      ["汇总", "统计范围", `${summary.scope.department} / ${summary.scope.cycleLabel} / 请假月 ${summary.scope.leaveMonth}`],
+      [
+        "汇总",
+        "统计范围",
+        `${summary.scope.department} / ${summary.scope.cycleLabel} / 请假月 ${summary.scope.leaveMonth}`,
+      ],
       ["汇总", "员工数", summary.summary.headcount],
       ["汇总", "部门数", summary.summary.departmentCount],
       ["汇总", "任务数", summary.summary.taskCount],
@@ -169,19 +178,27 @@ export function ReportsPage() {
     { label: "请假记录", value: summary?.summary.leaveCount ?? 0 },
     { label: "出差异常", value: summary?.summary.tripAlertCount ?? 0 },
   ];
+  const isRefreshing = isSummaryFetching || isLeaveFetching || isTripFetching || isTaskFetching;
 
   return (
     <>
-      <header className="flex h-[64px] items-center justify-between border-b border-gray-200 bg-white px-6">
+      <header className="border-b border-gray-200 bg-white px-4 py-4 sm:px-6">
         <div>
           <h1 className="text-lg font-bold text-gray-900">报表中心</h1>
           <p className="text-xs text-gray-500">统一导出出差、请假、任务和管理月报</p>
         </div>
       </header>
 
-      <main className="space-y-5 px-6 pb-6">
+      <main className="space-y-5 px-4 pb-6 sm:px-6">
+        {isRefreshing ? (
+          <div className="inline-flex items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-medium text-blue-700">
+            <BarChart3 className="h-3.5 w-3.5" />
+            正在更新报表数据...
+          </div>
+        ) : null}
+
         <section className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
-          <div className="grid gap-3 lg:grid-cols-[180px_180px_180px]">
+          <div className="grid gap-3 lg:grid-cols-[180px_180px_220px]">
             <div>
               <label className="mb-1 block text-xs font-medium text-gray-500">出差考勤周期</label>
               <input
@@ -221,7 +238,7 @@ export function ReportsPage() {
           </div>
         </section>
 
-        <section className="grid gap-4 md:grid-cols-4">
+        <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           {summaryCards.map((item) => (
             <div key={item.label} className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
               <p className="text-xs text-gray-500">{item.label}</p>
@@ -230,8 +247,8 @@ export function ReportsPage() {
           ))}
         </section>
 
-        <section className="grid gap-5 xl:grid-cols-[minmax(0,0.95fr)_minmax(360px,0.75fr)]">
-          <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+        <section className="grid gap-5 xl:grid-cols-[minmax(0,0.95fr)_minmax(320px,0.75fr)]">
+          <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm sm:p-5">
             <div className="mb-4 flex items-center gap-2">
               <FileSpreadsheet className="h-4 w-4 text-blue-600" />
               <h3 className="text-base font-semibold text-gray-900">标准导出</h3>
@@ -243,6 +260,7 @@ export function ReportsPage() {
                   const result = await exportTripMutation.mutateAsync({
                     cycleMonth,
                     department: department === "all" ? undefined : department,
+                    records: tripRecords,
                   });
                   downloadBase64File(result.fileName, result.fileBase64);
                 }}
@@ -251,9 +269,15 @@ export function ReportsPage() {
               >
                 <div>
                   <p className="text-sm font-medium text-gray-900">出差考勤 Excel</p>
-                  <p className="mt-1 text-xs text-gray-500">复用正式模板，适合打印上交</p>
+                  <p className="mt-1 text-xs text-gray-500">
+                    复用正式模板，适合打印上交，当前 {tripRecords.length} 条记录
+                  </p>
                 </div>
-                <Download className="h-4 w-4 text-gray-500" />
+                {exportTripMutation.isPending ? (
+                  <span className="text-xs font-medium text-blue-600">导出中...</span>
+                ) : (
+                  <Download className="h-4 w-4 text-gray-500" />
+                )}
               </button>
 
               <button
@@ -273,7 +297,9 @@ export function ReportsPage() {
               >
                 <div>
                   <p className="text-sm font-medium text-gray-900">请假记录 CSV</p>
-                  <p className="mt-1 text-xs text-gray-500">按月份和部门导出请假台账</p>
+                  <p className="mt-1 text-xs text-gray-500">
+                    按月份和部门导出请假台账，当前 {filteredLeaveRows.length} 条记录
+                  </p>
                 </div>
                 <Download className="h-4 w-4 text-gray-500" />
               </button>
@@ -284,7 +310,9 @@ export function ReportsPage() {
               >
                 <div>
                   <p className="text-sm font-medium text-gray-900">任务台账 CSV</p>
-                  <p className="mt-1 text-xs text-gray-500">导出项目、状态、优先级、负责人和计划日期</p>
+                  <p className="mt-1 text-xs text-gray-500">
+                    导出项目、状态、优先级、负责人和计划日期，当前 {filteredTaskRows.length} 条记录
+                  </p>
                 </div>
                 <Download className="h-4 w-4 text-gray-500" />
               </button>
@@ -295,7 +323,15 @@ export function ReportsPage() {
               >
                 <div>
                   <p className="text-sm font-medium text-gray-900">员工汇总 CSV</p>
-                  <p className="mt-1 text-xs text-gray-500">导出任务量、逾期、请假和出差异常负载</p>
+                  <p className="mt-1 text-xs text-gray-500">
+                    导出任务量、逾期、请假和出差异常负载，当前{" "}
+                    {
+                      members.filter(
+                        (member) => department === "all" || member.department === department,
+                      ).length
+                    }{" "}
+                    人
+                  </p>
                 </div>
                 <Download className="h-4 w-4 text-gray-500" />
               </button>
@@ -303,13 +339,13 @@ export function ReportsPage() {
           </div>
 
           <div className="space-y-5">
-            <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+            <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm sm:p-5">
               <div className="flex items-center gap-2">
                 <BarChart3 className="h-4 w-4 text-gray-500" />
                 <h3 className="text-base font-semibold text-gray-900">管理汇总</h3>
               </div>
 
-              <div className="mt-4 grid gap-3 md:grid-cols-2">
+              <div className="mt-4 grid gap-3 sm:grid-cols-2">
                 <div className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3">
                   <p className="text-xs text-gray-500">统计范围</p>
                   <p className="mt-1 text-sm font-semibold text-gray-900">
@@ -337,9 +373,40 @@ export function ReportsPage() {
               </div>
             </div>
 
-            <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+            <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm sm:p-5">
               <h3 className="text-base font-semibold text-gray-900">部门拆分</h3>
-              <div className="mt-4 overflow-hidden rounded-xl border border-gray-200">
+
+              <div className="mt-4 space-y-3 md:hidden">
+                {summary?.departmentRows.length ? (
+                  summary.departmentRows.map((row) => (
+                    <div key={row.department} className="rounded-xl border border-gray-200 p-4">
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="text-sm font-semibold text-gray-900">{row.department}</p>
+                        <span className="rounded-full bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-700">
+                          员工 {row.headcount}
+                        </span>
+                      </div>
+                      <div className="mt-3 grid gap-2 sm:grid-cols-3">
+                        <div className="rounded-lg bg-gray-50 px-3 py-3 text-sm text-gray-700">
+                          逾期任务 {row.overdueTaskCount}
+                        </div>
+                        <div className="rounded-lg bg-gray-50 px-3 py-3 text-sm text-gray-700">
+                          请假 {row.leaveCount} / {row.leaveDays} 天
+                        </div>
+                        <div className="rounded-lg bg-gray-50 px-3 py-3 text-sm text-gray-700">
+                          出差异常 {row.tripAlertCount}
+                        </div>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-10 text-center text-sm text-gray-400">
+                    当前条件下没有可汇总的数据
+                  </div>
+                )}
+              </div>
+
+              <div className="mt-4 hidden overflow-hidden rounded-xl border border-gray-200 md:block">
                 <table className="min-w-full text-sm">
                   <thead className="bg-gray-50 text-left text-gray-500">
                     <tr>
@@ -377,7 +444,7 @@ export function ReportsPage() {
           </div>
         </section>
 
-        <section className="grid gap-4 md:grid-cols-4">
+        <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
             <p className="text-xs text-gray-500">任务记录</p>
             <p className="mt-2 text-2xl font-bold text-gray-900">{filteredTaskRows.length}</p>
@@ -393,7 +460,11 @@ export function ReportsPage() {
           <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
             <p className="text-xs text-gray-500">员工汇总</p>
             <p className="mt-2 text-2xl font-bold text-gray-900">
-              {members.filter((member) => department === "all" || member.department === department).length}
+              {
+                members.filter(
+                  (member) => department === "all" || member.department === department,
+                ).length
+              }
             </p>
           </div>
         </section>

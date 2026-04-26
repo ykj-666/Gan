@@ -1,5 +1,5 @@
 @echo off
-title Gan Deploy Tool
+title Gan Deploy
 
 echo Checking Node.js...
 node --version >nul 2>nul
@@ -12,7 +12,7 @@ if %errorlevel% neq 0 (
     exit /b 1
 )
 
-echo Starting deploy tool...
+echo Starting deploy...
 cd /d "%~dp0"
 node deploy.cjs
 

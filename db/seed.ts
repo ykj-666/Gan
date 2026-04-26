@@ -1,36 +1,57 @@
-import { createClient } from "@libsql/client";
-import { drizzle } from "drizzle-orm/libsql";
-import { users } from "./schema";
-import { eq } from "drizzle-orm";
+import mysql from "mysql2/promise";
 import bcrypt from "bcryptjs";
 
-async function seed() {
-  const client = createClient({ url: "file:local.db" });
-  const db = drizzle(client);
-
-  // Check if admin already exists
-  const existing = await db.select().from(users).where(eq(users.unionId, "local_admin"));
-  if (existing.length > 0) {
-    console.log("Admin user already exists, skipping seed.");
-    client.close();
-    return;
+function getDatabaseUrl() {
+  const databaseUrl = process.env.DATABASE_URL?.trim();
+  if (!databaseUrl) {
+    throw new Error("DATABASE_URL 未配置");
   }
+  if (!databaseUrl.startsWith("mysql://")) {
+    throw new Error("db/seed.ts 仅支持 MySQL DATABASE_URL");
+  }
+  return databaseUrl;
+}
 
-  const passwordHash = await bcrypt.hash("admin123", 10);
-
-  await db.insert(users).values({
-    unionId: "local_admin",
-    name: "管理员",
-    email: "admin@example.com",
-    role: "admin",
-    passwordHash,
-    avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=admin`,
+async function seed() {
+  const connection = await mysql.createConnection({
+    uri: getDatabaseUrl(),
+    timezone: "Z",
   });
 
-  console.log("Seed completed: created default admin user.");
-  console.log("Username: admin");
-  console.log("Password: admin123");
-  client.close();
+  try {
+    const [existingRows] = await connection.query(
+      "SELECT id FROM users WHERE unionId = ? LIMIT 1",
+      ["local_admin"],
+    );
+    const existing = existingRows as Array<{ id: number }>;
+
+    if (existing.length > 0) {
+      console.log("Admin user already exists, skipping seed.");
+      return;
+    }
+
+    const passwordHash = await bcrypt.hash("admin123", 10);
+
+    await connection.execute(
+      `INSERT INTO users (unionId, name, department, email, role, passwordHash, avatar)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [
+        "local_admin",
+        "管理员",
+        "管理部",
+        "admin@example.com",
+        "admin",
+        passwordHash,
+        "https://api.dicebear.com/7.x/avataaars/svg?seed=admin",
+      ],
+    );
+
+    console.log("Seed completed: created default admin user.");
+    console.log("Username: admin");
+    console.log("Password: admin123");
+  } finally {
+    await connection.end();
+  }
 }
 
 seed().catch((err) => {

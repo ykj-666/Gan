@@ -18,17 +18,18 @@ if %errorlevel% neq 0 (
 echo [2/3] Opening browser...
 start "" "http://localhost:3000"
 
-echo [3/3] Starting local web server...
+echo [3/3] Preparing local MySQL and starting web server...
 echo.
 echo Local URL: http://localhost:3000
 echo Account: admin
 echo Password: admin123
+echo MySQL: this script will auto-prepare a local portable MySQL on 127.0.0.1:3307
 echo.
 echo Keep this window open while using the website.
 echo Press Ctrl+C to stop the server.
 echo.
 
-npm.cmd run dev
+powershell -ExecutionPolicy Bypass -File "%~dp0scripts\start-local-web.ps1"
 
 echo.
 echo Server stopped. Code: %errorlevel%

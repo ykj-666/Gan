@@ -3,6 +3,7 @@ import {
   activities,
   attendances,
   businessTrips,
+  systemSettings,
   tasks,
   users,
 } from "./schema";
@@ -14,6 +15,7 @@ export const usersRelations = relations(users, ({ many }) => ({
   attendances: many(attendances),
   businessTrips: many(businessTrips),
   activities: many(activities),
+  systemSettings: many(systemSettings),
 }));
 
 export const tasksRelations = relations(tasks, ({ one, many }) => ({
@@ -56,6 +58,13 @@ export const attendancesRelations = relations(attendances, ({ one }) => ({
 export const businessTripsRelations = relations(businessTrips, ({ one }) => ({
   user: one(users, {
     fields: [businessTrips.userId],
+    references: [users.id],
+  }),
+}));
+
+export const systemSettingsRelations = relations(systemSettings, ({ one }) => ({
+  updater: one(users, {
+    fields: [systemSettings.updatedBy],
     references: [users.id],
   }),
 }));

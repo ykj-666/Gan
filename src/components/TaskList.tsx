@@ -40,23 +40,23 @@ export function TaskList({ onEditTask, onCreateTask }: TaskListProps) {
   });
 
   return (
-    <div className="flex h-full flex-col rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
-      <div className="mb-5 flex items-center justify-between">
+    <div className="flex h-full flex-col rounded-xl border border-gray-200 bg-white p-4 shadow-sm sm:p-6">
+      <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h2 className="text-lg font-bold text-gray-900">任务列表</h2>
           <p className="mt-0.5 text-sm text-gray-500">{tasks?.length ?? 0} 个任务</p>
         </div>
         <button
           onClick={onCreateTask}
-          className="flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-blue-700"
+          className="flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-blue-700"
         >
           <Plus className="h-4 w-4" />
           新建任务
         </button>
       </div>
 
-      <div className="mb-4 flex items-center gap-3">
-        <div className="relative flex-1">
+      <div className="mb-4 grid gap-3 sm:grid-cols-[minmax(0,1fr)_220px]">
+        <div className="relative min-w-0">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
           <input
             type="text"
@@ -71,7 +71,7 @@ export function TaskList({ onEditTask, onCreateTask }: TaskListProps) {
           <select
             value={statusFilter}
             onChange={(event) => setStatusFilter(event.target.value)}
-            className="cursor-pointer rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm text-gray-700 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+            className="w-full cursor-pointer rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm text-gray-700 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
           >
             <option value="all">全部状态</option>
             {TASK_STATUS_OPTIONS.map((option) => (
@@ -102,16 +102,16 @@ export function TaskList({ onEditTask, onCreateTask }: TaskListProps) {
               return (
                 <div
                   key={task.id}
-                  className="group flex cursor-pointer items-center gap-3 rounded-xl p-3 transition-all duration-200 hover:bg-gray-50"
+                  className="group flex cursor-pointer items-start gap-3 rounded-xl p-3 transition-all duration-200 hover:bg-gray-50 sm:items-center"
                   onClick={() => onEditTask(task)}
                 >
                   <div
-                    className="h-2.5 w-2.5 flex-shrink-0 rounded-full"
+                    className="mt-1 h-2.5 w-2.5 flex-shrink-0 rounded-full sm:mt-0"
                     style={{ background: status.color }}
                   />
 
                   <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
                       <p className="truncate text-sm font-semibold text-gray-800 transition-colors group-hover:text-indigo-700">
                         {task.projectName}
                       </p>
@@ -123,7 +123,7 @@ export function TaskList({ onEditTask, onCreateTask }: TaskListProps) {
                       </span>
                     </div>
 
-                    <div className="mt-1 flex items-center gap-3">
+                    <div className="mt-1 flex flex-wrap items-center gap-2 sm:gap-3">
                       <span
                         className="status-badge text-[11px]"
                         style={{ background: status.bg, color: status.color }}
@@ -150,7 +150,7 @@ export function TaskList({ onEditTask, onCreateTask }: TaskListProps) {
                         event.stopPropagation();
                         setOpenMenuId(openMenuId === task.id ? null : task.id);
                       }}
-                      className="rounded-lg p-1.5 opacity-0 transition-all duration-200 hover:bg-gray-100 group-hover:opacity-100"
+                      className="rounded-lg p-1.5 opacity-100 transition-all duration-200 hover:bg-gray-100 sm:opacity-0 sm:group-hover:opacity-100"
                     >
                       <MoreHorizontal className="h-4 w-4 text-gray-500" />
                     </button>

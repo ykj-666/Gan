@@ -1,7 +1,8 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
-import { type SQL, and, asc, desc, eq, isNull, sql } from "drizzle-orm";
-import { businessTrips, users } from "@db/schema";
+import { type SQL, and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
+import * as path from "path";
+import { businessTrips, tasks, users } from "@db/schema";
 import { createRouter, adminQuery } from "../middleware";
 import { getDb } from "../queries/connection";
 import { createActivity } from "../lib/activity";
@@ -18,8 +19,14 @@ const businessTripInputSchema = z.object({
   projectCode: z.string().min(1),
   cycleStart: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "日期格式必须为 YYYY-MM-DD"),
   cycleEnd: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "日期格式必须为 YYYY-MM-DD"),
-  dispatchStart: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "日期格式必须为 YYYY-MM-DD"),
-  dispatchEnd: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "日期格式必须为 YYYY-MM-DD"),
+  dispatchStart: z.union([
+    z.literal(""),
+    z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "日期格式必须为 YYYY-MM-DD"),
+  ]),
+  dispatchEnd: z.union([
+    z.literal(""),
+    z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "日期格式必须为 YYYY-MM-DD"),
+  ]),
   location: z.string().min(1),
   workDays: z.number().int().nonnegative().max(366),
   officeDays: z.number().int().nonnegative().max(366),
@@ -31,12 +38,35 @@ const businessTripInputSchema = z.object({
 });
 
 type BusinessTripInput = z.infer<typeof businessTripInputSchema>;
+const exportTripRowSchema = z.object({
+  id: z.number().int(),
+  userId: z.number().int().nullable(),
+  employeeName: z.string(),
+  department: z.string(),
+  projectName: z.string().nullable().optional(),
+  projectCode: z.string(),
+  cycleStart: z.string(),
+  cycleEnd: z.string(),
+  dispatchStart: z.string(),
+  dispatchEnd: z.string(),
+  location: z.string(),
+  workDays: z.number().int(),
+  actualDays: z.number().int(),
+  officeDays: z.number().int(),
+  tripDays: z.number().int(),
+  tempDays: z.number().int(),
+  absenceDays: z.number().int(),
+  absenceReason: z.string().nullable(),
+  subsidyDays: z.number().int(),
+  remark: z.string().nullable(),
+});
 
 type TripListRow = {
   id: number;
   userId: number | null;
   employeeName: string;
   department: string;
+  projectName: string | null;
   projectCode: string;
   cycleStart: string;
   cycleEnd: string;
@@ -82,8 +112,37 @@ const tripSelect = {
   updatedAt: businessTrips.updatedAt,
 } as const;
 
+async function attachProjectNames(rows: TripListRow[]) {
+  const projectCodes = Array.from(
+    new Set(rows.map((row) => row.projectCode.trim()).filter(Boolean)),
+  );
+
+  if (projectCodes.length === 0) {
+    return rows.map((row) => ({ ...row, projectName: null }));
+  }
+
+  const db = getDb();
+  const matchedTasks = await db
+    .select({ projectCode: tasks.projectCode, projectName: tasks.projectName })
+    .from(tasks)
+    .where(and(inArray(tasks.projectCode, projectCodes), isNull(tasks.deletedAt)))
+    .orderBy(desc(tasks.createdAt));
+
+  const projectNameByCode = new Map<string, string>();
+  matchedTasks.forEach((task) => {
+    const code = task.projectCode?.trim();
+    if (!code || projectNameByCode.has(code)) return;
+    projectNameByCode.set(code, task.projectName.trim());
+  });
+
+  return rows.map((row) => ({
+    ...row,
+    projectName: projectNameByCode.get(row.projectCode.trim()) ?? null,
+  }));
+}
+
 async function normalizeBusinessTripInput(input: BusinessTripInput) {
-  if (input.dispatchStart > input.dispatchEnd) {
+  if (input.dispatchStart && input.dispatchEnd && input.dispatchStart > input.dispatchEnd) {
     throw new TRPCError({
       code: "BAD_REQUEST",
       message: "派遣结束日不能早于起始日",
@@ -224,179 +283,145 @@ async function selectTripRows(input?: {
     .leftJoin(users, eq(users.id, businessTrips.userId));
 
   if (conditions.length > 1) {
-    return (await query
+    return attachProjectNames((await query
       .where(and(...conditions))
       .orderBy(
         desc(businessTrips.createdAt),
         asc(businessTrips.department),
         asc(users.name),
         asc(businessTrips.employeeName),
-      )) as TripListRow[];
+      )) as TripListRow[]);
   }
 
-  return (await query.orderBy(
+  return attachProjectNames((await query.orderBy(
     desc(businessTrips.createdAt),
     asc(businessTrips.department),
     asc(users.name),
     asc(businessTrips.employeeName),
-  )) as TripListRow[];
+  )) as TripListRow[]);
+}
+
+function formatSheetName(cycleStart: string, cycleEnd: string) {
+  const [, startMonth, startDay] = cycleStart.split("-");
+  const [, endMonth, endDay] = cycleEnd.split("-");
+  return `${startMonth}${startDay}-${endMonth}${endDay}`;
+}
+
+function formatCycleText(cycleStart: string, cycleEnd: string) {
+  const [startYear, startMonth, startDay] = cycleStart.split("-");
+  const [endYear, endMonth, endDay] = cycleEnd.split("-");
+  return `考勤周期：${startYear}年${startMonth}月${startDay}日-${endYear}年${endMonth}月${endDay}日`;
+}
+
+function getExportDepartmentLabel(department?: string) {
+  return department?.trim() || "全部部门";
+}
+
+void formatCycleText;
+
+function getExportMonthLabel(cycleMonth: string) {
+  const [, month] = cycleMonth.split("-");
+  return `${month}月`;
+}
+
+function formatCycleValue(cycleStart: string, cycleEnd: string) {
+  const [startYear, startMonth, startDay] = cycleStart.split("-");
+  const [endYear, endMonth, endDay] = cycleEnd.split("-");
+  return `${startYear}年${Number(startMonth)}月${Number(startDay)}日-${endYear}年${Number(endMonth)}月${Number(endDay)}日`;
+}
+
+function formatSlashDate(value: string) {
+  const [year, month, day] = value.split("-");
+  return `${year}/${Number(month)}/${Number(day)}`;
+}
+
+function buildProjectSummary(rows: TripListRow[]) {
+  const names = [...new Set(rows.map((row) => row.projectName?.trim()).filter(Boolean))];
+  const codes = [...new Set(rows.map((row) => row.projectCode.trim()).filter(Boolean))];
+
+  if (codes.length === 0) {
+    return {
+      title: "XX项目",
+      code: "",
+    };
+  }
+
+  if (codes.length === 1) {
+    return {
+      title: names[0] ?? "XX项目",
+      code: codes[0],
+    };
+  }
+
+  return {
+    title: "多项目汇总",
+    code: codes.join("、"),
+  };
 }
 
 async function buildWorkbook(
   rows: TripListRow[],
   cycleMonth: string,
-  department?: string,
+  _department?: string,
 ) {
   const excelModule = await import("exceljs");
   const ExcelJS = excelModule.default ?? excelModule;
   const workbook = new ExcelJS.Workbook();
-  const worksheet = workbook.addWorksheet("出差考勤", {
-    views: [{ state: "frozen", ySplit: 2 }],
-  });
-
-  worksheet.columns = [
-    { key: "projectCode", width: 20 },
-    { key: "cycleLabel", width: 28 },
-    { key: "workDays", width: 16 },
-    { key: "actualDays", width: 18 },
-    { key: "officeDays", width: 12 },
-    { key: "tripDays", width: 16 },
-    { key: "tempDays", width: 16 },
-    { key: "absenceDays", width: 12 },
-    { key: "absenceReason", width: 18 },
-    { key: "dispatchStart", width: 18 },
-    { key: "dispatchEnd", width: 18 },
-    { key: "location", width: 18 },
-    { key: "subsidyDays", width: 18 },
-    { key: "remark", width: 28 },
-  ];
+  const templatePath = path.join(process.cwd(), "api", "templates", "business-trip-template.xlsx");
+  await workbook.xlsx.readFile(templatePath);
 
   const cycle = getCycleRangeFromMonth(cycleMonth);
-  worksheet.mergeCells("A1:G1");
-  worksheet.mergeCells("H1:N1");
-  worksheet.getCell("A1").value = `项目编号：${
-    rows.length === 1 ? rows[0].projectCode : "批量导出"
-  }`;
-  worksheet.getCell("H1").value = `考勤周期：${cycle.label}${
-    department ? `  部门：${department}` : ""
-  }`;
+  const projectSummary = buildProjectSummary(rows);
+  const worksheet = workbook.worksheets[0];
+  worksheet.name = formatSheetName(cycle.cycleStart, cycle.cycleEnd);
 
-  const topFill = {
-    type: "pattern" as const,
-    pattern: "solid" as const,
-    fgColor: { argb: "FFEFF3F8" },
-  };
-  const highlightFill = {
-    type: "pattern" as const,
-    pattern: "solid" as const,
-    fgColor: { argb: "FFFFF4CC" },
-  };
-  const headerFill = {
-    type: "pattern" as const,
-    pattern: "solid" as const,
-    fgColor: { argb: "FFD9D9D9" },
-  };
-  const border = {
-    top: { style: "thin", color: { argb: "FFBDBDBD" } },
-    left: { style: "thin", color: { argb: "FFBDBDBD" } },
-    bottom: { style: "thin", color: { argb: "FFBDBDBD" } },
-    right: { style: "thin", color: { argb: "FFBDBDBD" } },
-  } as const;
+  const dataRowNumber = 5;
+  const templateBlankRowCount = 2;
+  const exportRowCount = Math.max(rows.length, 1);
 
-  ["A1", "H1"].forEach((cellRef) => {
-    const cell = worksheet.getCell(cellRef);
-    cell.font = { bold: true, size: 12 };
-    cell.alignment = { vertical: "middle", horizontal: "left" };
-    cell.fill = topFill;
-    cell.border = border;
-  });
+  worksheet.getCell("A1").value = projectSummary.title;
+  worksheet.getCell("B2").value = projectSummary.code;
+  worksheet.getCell("B3").value = formatCycleValue(cycle.cycleStart, cycle.cycleEnd);
 
-  const headers = [
-    "项目编号",
-    "考勤周期",
-    "本月应出勤天数",
-    "本月实际出勤天数合计",
-    "办公区",
-    "长期出差（现场）",
-    "临时外派其他项目",
-    "缺勤天数",
-    "缺勤原因",
-    "派遣函长差起始日【必填】以函为准",
-    "长差派遣结束日【必填】以函为准",
-    "长差（现场）所在地",
-    "计算出差补贴天数",
-    "备注",
-  ];
-  const headerRow = worksheet.addRow(headers);
-  headerRow.height = 24;
-  headerRow.eachCell((cell, columnNumber) => {
-    cell.font = { bold: true };
-    cell.fill = [6, 10, 11, 12, 13].includes(columnNumber)
-      ? highlightFill
-      : headerFill;
-    cell.border = border;
-    cell.alignment = {
-      vertical: "middle",
-      horizontal: "center",
-      wrapText: true,
-    };
-  });
-  worksheet.autoFilter = "A2:N2";
+  if (exportRowCount < templateBlankRowCount) {
+    worksheet.spliceRows(
+      dataRowNumber + exportRowCount,
+      templateBlankRowCount - exportRowCount,
+    );
+  } else if (exportRowCount > templateBlankRowCount) {
+    worksheet.duplicateRow(
+      dataRowNumber + templateBlankRowCount - 1,
+      exportRowCount - templateBlankRowCount,
+      true,
+    );
+  }
 
-  rows.forEach((row) => {
-    const excelRow = worksheet.addRow([
-      row.projectCode,
-      `${row.cycleStart}-${row.cycleEnd}`,
-      row.workDays,
-      row.actualDays,
-      row.officeDays,
-      row.tripDays,
-      row.tempDays,
-      row.absenceDays,
-      row.absenceReason ?? "",
-      row.dispatchStart,
-      row.dispatchEnd,
-      row.location,
-      row.subsidyDays,
-      row.remark ?? "",
-    ]);
+  const exportRows = rows.length > 0 ? rows : [null];
+  exportRows.forEach((row, index) => {
+    const rowNumber = dataRowNumber + index;
+    const excelRow = worksheet.getRow(rowNumber);
+    const values = row
+      ? [
+          row.employeeName,
+          row.department,
+          row.workDays || "",
+          row.actualDays || "",
+          row.officeDays || "",
+          row.tripDays || "",
+          row.tempDays || "",
+          row.absenceDays || "",
+          row.absenceReason ?? "",
+          row.dispatchStart ? formatSlashDate(row.dispatchStart) : "",
+          row.dispatchEnd ? formatSlashDate(row.dispatchEnd) : "",
+          row.location,
+          row.subsidyDays || "",
+          row.remark ?? "",
+        ]
+      : new Array(14).fill("");
 
-    excelRow.eachCell((cell, columnNumber) => {
-      cell.border = border;
-      cell.alignment = {
-        vertical: "middle",
-        horizontal: columnNumber >= 3 && columnNumber <= 13 ? "center" : "left",
-        wrapText: true,
-      };
-      if ([6, 10, 11, 12, 13].includes(columnNumber)) {
-        cell.fill = highlightFill;
-      }
-    });
-  });
-
-  const notesStart = worksheet.rowCount + 2;
-  worksheet.mergeCells(`A${notesStart}:N${notesStart}`);
-  worksheet.mergeCells(`A${notesStart + 1}:N${notesStart + 1}`);
-  worksheet.mergeCells(`A${notesStart + 2}:N${notesStart + 2}`);
-  worksheet.getCell(`A${notesStart}`).value =
-    "填报规则说明：M > 周期天数时必须填写备注；H > 0 时必须填写缺勤原因；J/K 为必填项。";
-  worksheet.getCell(`A${notesStart + 1}`).value =
-    "长期出差相关列：F / J / K / L / M 已重点标记，请根据派遣函和现场实际情况核对。";
-  worksheet.getCell(`A${notesStart + 2}`).value =
-    "考勤周期固定为上月25日至当月24日，每月26日17:00前上报人力资源部。";
-
-  [notesStart, notesStart + 1, notesStart + 2].forEach((rowNumber) => {
-    const cell = worksheet.getCell(`A${rowNumber}`);
-    cell.font = {
-      size: 10,
-      italic: true,
-      color: { argb: "FF666666" },
-    };
-    cell.alignment = {
-      vertical: "middle",
-      horizontal: "left",
-      wrapText: true,
-    };
+    for (let columnNumber = 1; columnNumber <= 14; columnNumber += 1) {
+      excelRow.getCell(columnNumber).value = values[columnNumber - 1];
+    }
   });
 
   const buffer = await workbook.xlsx.writeBuffer();
@@ -435,7 +460,7 @@ export const businessTripRouter = createRouter({
       const normalized = await normalizeBusinessTripInput(input);
 
       const result = await db.transaction(async (tx) => {
-        const insertResult = await tx.insert(businessTrips).values({
+        const [inserted] = await tx.insert(businessTrips).values({
           userId: normalized.userId,
           employeeName: normalized.employeeName,
           department: normalized.department,
@@ -454,7 +479,7 @@ export const businessTripRouter = createRouter({
           absenceReason: normalized.absenceReason,
           subsidyDays: normalized.subsidyDays,
           remark: normalized.remark,
-        });
+        }).$returningId();
 
         await createActivity(tx, {
           type: "trip_created",
@@ -463,7 +488,11 @@ export const businessTripRouter = createRouter({
           req: ctx.req,
         });
 
-        return Number(insertResult.lastInsertRowid);
+        if (!inserted?.id) {
+          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "出差记录创建失败" });
+        }
+
+        return inserted.id;
       });
 
       return { id: result, ...normalized };
@@ -478,7 +507,7 @@ export const businessTripRouter = createRouter({
         const records = [];
         for (const item of input) {
           const normalized = await normalizeBusinessTripInput(item);
-          const result = await tx.insert(businessTrips).values({
+          const [inserted] = await tx.insert(businessTrips).values({
             userId: normalized.userId,
             employeeName: normalized.employeeName,
             department: normalized.department,
@@ -497,9 +526,13 @@ export const businessTripRouter = createRouter({
             absenceReason: normalized.absenceReason,
             subsidyDays: normalized.subsidyDays,
             remark: normalized.remark,
-          });
+          }).$returningId();
 
-          records.push({ id: Number(result.lastInsertRowid), ...normalized });
+          if (!inserted?.id) {
+            throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "出差记录批量创建失败" });
+          }
+
+          records.push({ id: inserted.id, ...normalized });
         }
 
         await createActivity(tx, {
@@ -598,20 +631,24 @@ export const businessTripRouter = createRouter({
       z.object({
         cycleMonth: z.string(),
         department: z.string().optional(),
+        records: z.array(exportTripRowSchema).optional(),
       }),
     )
     .mutation(async ({ input }) => {
-      const rows = await selectTripRows({
-        cycleMonth: input.cycleMonth,
-        department: input.department,
-      });
+      const rows =
+        input.records && input.records.length > 0
+          ? await attachProjectNames(input.records as TripListRow[])
+          : await selectTripRows({
+              cycleMonth: input.cycleMonth,
+              department: input.department,
+            });
 
       const fileBase64 = await buildWorkbook(rows, input.cycleMonth, input.department);
-      const cycle = getCycleRangeFromMonth(input.cycleMonth);
-      const suffix = input.department ? `-${input.department}` : "";
+      const departmentLabel = getExportDepartmentLabel(input.department);
+      const monthLabel = getExportMonthLabel(input.cycleMonth);
 
       return {
-        fileName: `出差考勤统计-${cycle.label}${suffix}.xlsx`,
+        fileName: `现场考勤表-${departmentLabel} -${monthLabel}.xlsx`,
         fileBase64,
         count: rows.length,
       };

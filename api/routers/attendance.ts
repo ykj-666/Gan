@@ -66,7 +66,7 @@ export const attendanceRouter = createRouter({
     }
 
     const result = await db.transaction(async (tx) => {
-      const insertResult = await tx.insert(attendances).values({
+      const [inserted] = await tx.insert(attendances).values({
         userId: input.userId,
         type: input.type,
         startDate: input.startDate,
@@ -74,7 +74,7 @@ export const attendanceRouter = createRouter({
         days: input.days ?? null,
         reason: input.reason?.trim() || null,
         status: input.status ?? "approved",
-      });
+      }).$returningId();
 
       await createActivity(tx, {
         type: "leave_created",
@@ -83,7 +83,11 @@ export const attendanceRouter = createRouter({
         req: ctx.req,
       });
 
-      return Number(insertResult.lastInsertRowid);
+      if (!inserted?.id) {
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "请假记录创建失败" });
+      }
+
+      return inserted.id;
     });
 
     return { id: result, ...input };

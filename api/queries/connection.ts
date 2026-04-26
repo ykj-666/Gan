@@ -1,19 +1,27 @@
-import { drizzle } from "drizzle-orm/libsql";
-import { createClient } from "@libsql/client";
-import * as path from "path";
+import mysql from "mysql2/promise";
+import { drizzle } from "drizzle-orm/mysql2";
 import * as schema from "@db/schema";
 import * as relations from "@db/relations";
+import { getDatabaseUrl } from "../lib/database-url";
 
 const fullSchema = { ...schema, ...relations };
 
-let instance: ReturnType<typeof drizzle<typeof fullSchema>>;
+function createDb() {
+  const pool = mysql.createPool({
+    uri: getDatabaseUrl(),
+    connectionLimit: 10,
+    timezone: "Z",
+  });
+
+  return drizzle(pool, { schema: fullSchema, mode: "default" });
+}
+
+let instance: ReturnType<typeof createDb>;
 
 export function getDb() {
   if (!instance) {
-    const dbPath = path.join(process.cwd(), "local.db");
-    const client = createClient({ url: `file:${dbPath}` });
-    instance = drizzle(client, { schema: fullSchema });
-    client.execute("PRAGMA foreign_keys = ON");
+    instance = createDb();
   }
+
   return instance;
 }

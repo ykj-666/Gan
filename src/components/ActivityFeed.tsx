@@ -25,14 +25,14 @@ export function ActivityFeed() {
 
   if (isLoading) {
     return (
-      <div className="flex h-[300px] items-center justify-center rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+      <div className="flex h-[300px] items-center justify-center rounded-xl border border-gray-200 bg-white p-4 shadow-sm sm:p-6">
         <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
       </div>
     );
   }
 
   return (
-    <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+    <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm sm:p-6">
       <h3 className="mb-4 text-base font-bold text-gray-900">最近动作</h3>
 
       <div className="max-h-[320px] space-y-3 overflow-y-auto scrollbar-thin">
@@ -64,7 +64,7 @@ export function ActivityFeed() {
                 </div>
                 <div className="min-w-0 flex-1">
                   <p className="text-sm leading-snug text-gray-700">{activity.description}</p>
-                  <div className="mt-1 flex items-center gap-2 text-[11px] text-gray-400">
+                  <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-gray-400">
                     <span>{time}</span>
                     <span>{activity.actorName || "系统"}</span>
                   </div>
