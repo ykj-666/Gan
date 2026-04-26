@@ -218,6 +218,26 @@ function ensureGitRepo(projectRoot) {
   return result.ok && result.stdout === "true";
 }
 
+function hasGitCredentialManager(projectRoot) {
+  const result = runGitCommand(projectRoot, ["credential-manager", "--version"], { allowFailure: true });
+  return result.ok;
+}
+
+function ensureGitCredentialManager(projectRoot) {
+  if (!hasGitCredentialManager(projectRoot)) {
+    return {
+      ok: false,
+      message: "未检测到 Git Credential Manager，请先安装或手动配置 GitHub 凭据",
+    };
+  }
+
+  runGitCommand(projectRoot, ["credential-manager", "configure"]);
+  return {
+    ok: true,
+    message: "已启用 Git Credential Manager",
+  };
+}
+
 function getGitBranch(projectRoot) {
   const result = runGitCommand(projectRoot, ["branch", "--show-current"], { allowFailure: true });
   return result.ok ? result.stdout.trim() : "";
@@ -270,7 +290,14 @@ function syncToGitHub(projectRoot, write = console.log) {
     throw new Error("当前目录不是 Git 仓库，无法同步到 GitHub");
   }
 
-  write("[1/4] 检查 GitHub 远程仓库...\n");
+  write("[1/5] 检查 GitHub 凭据管理...\n");
+  const credentialInfo = ensureGitCredentialManager(projectRoot);
+  if (!credentialInfo.ok) {
+    throw new Error(credentialInfo.message);
+  }
+  write(`[OK] ${credentialInfo.message}\n`);
+
+  write("[2/5] 检查 GitHub 远程仓库...\n");
   const remoteInfo = ensureGitHubRemote(projectRoot);
   write(`[OK] ${remoteInfo.message}\n`);
 
@@ -279,7 +306,7 @@ function syncToGitHub(projectRoot, write = console.log) {
     throw new Error("当前不在任何分支上，请先切回 main 后再同步");
   }
 
-  write(`[2/4] 准备同步分支 ${branch}...\n`);
+  write(`[3/5] 准备同步分支 ${branch}...\n`);
   const statusResult = runGitCommand(projectRoot, ["status", "--porcelain"]);
   let commitMessage = null;
 
@@ -301,7 +328,7 @@ function syncToGitHub(projectRoot, write = console.log) {
     write("[OK] 工作区没有新的本地改动\n");
   }
 
-  write("[3/4] 推送到 GitHub...\n");
+  write("[4/5] 推送到 GitHub...\n");
   const pushResult = runGitCommand(projectRoot, ["push", "-u", GITHUB_REMOTE_NAME, branch], {
     allowFailure: true,
   });
@@ -313,7 +340,7 @@ function syncToGitHub(projectRoot, write = console.log) {
 
   if (pushResult.stdout) write(pushResult.stdout + "\n");
   if (pushResult.stderr) write(pushResult.stderr + "\n");
-  write(`[4/4] GitHub 同步完成: ${GITHUB_REMOTE_URL}\n`);
+  write(`[5/5] GitHub 同步完成: ${GITHUB_REMOTE_URL}\n`);
 
   return {
     branch,
@@ -562,6 +589,8 @@ module.exports = {
   checkGitStatus,
   checkLocalBuild,
   ensureGitRepo,
+  hasGitCredentialManager,
+  ensureGitCredentialManager,
   getGitBranch,
   ensureGitHubRemote,
   syncToGitHub,
