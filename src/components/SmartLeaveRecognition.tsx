@@ -1,0 +1,732 @@
+import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  AlertCircle,
+  Key,
+  Loader2,
+  Plus,
+  Save,
+  ScanSearch,
+  Trash2,
+  Upload,
+  Wand2,
+} from "lucide-react";
+import {
+  loadKimiApiKey,
+  loadManagerWorkspaceSettings,
+  saveKimiApiKey,
+} from "@/lib/app-settings";
+import { trpc } from "@/providers/trpc";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  addDaysToDate,
+  diffDaysInclusive,
+  leaveTypeLabelMap,
+} from "@/pages/attendance/helpers";
+
+type RecognizedLeave = {
+  employeeName: string;
+  type: "sick" | "annual" | "personal" | "marriage" | "maternity" | "other";
+  startDate: string;
+  endDate: string;
+  days: number;
+  reason: string;
+  approved: boolean;
+};
+
+type SmartLeaveRecognitionProps = {
+  isOpen: boolean;
+  onClose: () => void;
+  userList?: { id: number; name: string | null }[];
+  onSaved?: (savedLeaves: RecognizedLeave[]) => void;
+};
+
+const leaveTypeOptions = Object.entries(leaveTypeLabelMap) as Array<
+  [RecognizedLeave["type"], string]
+>;
+
+function createEmptyLeave(): RecognizedLeave {
+  return {
+    employeeName: "",
+    type: "other",
+    startDate: "",
+    endDate: "",
+    days: 1,
+    reason: "",
+    approved: true,
+  };
+}
+
+function compressImage(file: File, maxWidth = 3000): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement("canvas");
+      let { width, height } = img;
+      const maxHeight = 6000;
+
+      if (width > maxWidth) {
+        height = (height * maxWidth) / width;
+        width = maxWidth;
+      }
+
+      if (height > maxHeight) {
+        width = (width * maxHeight) / height;
+        height = maxHeight;
+      }
+
+      canvas.width = Math.round(width);
+      canvas.height = Math.round(height);
+
+      const context = canvas.getContext("2d");
+      if (!context) {
+        reject(new Error("Canvas context unavailable"));
+        return;
+      }
+
+      context.imageSmoothingEnabled = true;
+      context.imageSmoothingQuality = "high";
+      context.drawImage(img, 0, 0, canvas.width, canvas.height);
+      resolve(canvas.toDataURL("image/png").split(",")[1] ?? "");
+    };
+    img.onerror = reject;
+    img.src = URL.createObjectURL(file);
+  });
+}
+
+function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result as string;
+      resolve(result.split(",")[1] ?? "");
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+export default function SmartLeaveRecognition({
+  isOpen,
+  onClose,
+  userList = [],
+  onSaved,
+}: SmartLeaveRecognitionProps) {
+  const utils = trpc.useUtils();
+  const recognizeMutation = trpc.ai.recognizeLeave.useMutation();
+  const createLeaveMutation = trpc.attendance.create.useMutation();
+
+  const [apiKey, setApiKey] = useState("");
+  const [showKeyInput, setShowKeyInput] = useState(false);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [imageBase64, setImageBase64] = useState("");
+  const [rawFile, setRawFile] = useState<File | null>(null);
+  const [highQuality, setHighQuality] = useState(false);
+  const [leaves, setLeaves] = useState<RecognizedLeave[]>([]);
+  const [rawText, setRawText] = useState("");
+  const [error, setError] = useState("");
+  const [saveError, setSaveError] = useState("");
+  const [isSaving, setIsSaving] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    const saved = loadKimiApiKey();
+    if (saved) {
+      setApiKey(saved);
+    }
+    const settings = loadManagerWorkspaceSettings();
+    setHighQuality(settings.recognitionHighQuality);
+  }, []);
+
+  const resetState = useCallback(() => {
+    setImagePreview(null);
+    setImageBase64("");
+    setRawFile(null);
+    setLeaves([]);
+    setRawText("");
+    setError("");
+    setSaveError("");
+    setIsSaving(false);
+  }, []);
+
+  useEffect(() => {
+    if (!isOpen) {
+      resetState();
+    }
+  }, [isOpen, resetState]);
+
+  const handleImage = useCallback(
+    async (file: File, preferHighQuality = highQuality) => {
+      setError("");
+      setSaveError("");
+      setLeaves([]);
+      setRawText("");
+      setRawFile(file);
+
+      const reader = new FileReader();
+      reader.onload = (event) => setImagePreview(event.target?.result as string);
+      reader.readAsDataURL(file);
+
+      try {
+        const base64 =
+          preferHighQuality && file.size < 4 * 1024 * 1024
+            ? await fileToBase64(file)
+            : await compressImage(file);
+        setImageBase64(base64);
+      } catch {
+        setError("截图处理失败，请重新上传。");
+      }
+    },
+    [highQuality],
+  );
+
+  const handlePaste = useCallback(
+    (event: ClipboardEvent) => {
+      const items = event.clipboardData?.items;
+      if (!items) return;
+
+      for (const item of items) {
+        if (!item.type.startsWith("image/")) continue;
+        const file = item.getAsFile();
+        if (file) {
+          void handleImage(file);
+        }
+        break;
+      }
+    },
+    [handleImage],
+  );
+
+  useEffect(() => {
+    if (!isOpen) return;
+    document.addEventListener("paste", handlePaste);
+    return () => document.removeEventListener("paste", handlePaste);
+  }, [handlePaste, isOpen]);
+
+  const matchUserId = (name: string) => {
+    const trimmed = name.trim();
+    if (!trimmed) return undefined;
+
+    const exact = userList.find((user) => user.name?.trim() === trimmed);
+    if (exact) return exact.id;
+
+    const fuzzy = userList.find((user) => {
+      const userName = user.name?.trim();
+      return userName ? userName.includes(trimmed) || trimmed.includes(userName) : false;
+    });
+
+    return fuzzy?.id;
+  };
+
+  const getMatchStatus = (name: string) => {
+    if (!name.trim()) return "empty";
+    return matchUserId(name) ? "matched" : "unmatched";
+  };
+
+  const handleRecognize = async () => {
+    if (!imageBase64) {
+      setError("请先上传聊天截图。");
+      return;
+    }
+    if (!apiKey.trim()) {
+      setShowKeyInput(true);
+      setError("请先配置 OCR API Key。");
+      return;
+    }
+
+    setError("");
+    try {
+      const result = await recognizeMutation.mutateAsync({
+        imageBase64,
+        apiKey: apiKey.trim(),
+      });
+
+      setRawText(result.raw);
+
+      if (!result.leaves.length) {
+        setError("未识别到请假记录，请更换更清晰的聊天截图。");
+        return;
+      }
+
+      setLeaves(
+        result.leaves.map((leave) => ({
+          employeeName: leave.employeeName || "",
+          type: leave.type || "other",
+          startDate: leave.startDate || "",
+          endDate: leave.endDate || "",
+          days: leave.days || 1,
+          reason: leave.reason || "",
+          approved: leave.approved ?? true,
+        })),
+      );
+    } catch (mutationError: any) {
+      setError(mutationError.message || "请假识别失败。");
+    }
+  };
+
+  const updateLeave = <K extends keyof RecognizedLeave>(
+    index: number,
+    field: K,
+    value: RecognizedLeave[K],
+  ) => {
+    setLeaves((current) =>
+      current.map((leave, currentIndex) => {
+        if (currentIndex !== index) return leave;
+
+        const next = { ...leave, [field]: value } as RecognizedLeave;
+
+        if (field === "startDate" && next.startDate && next.days) {
+          next.endDate = addDaysToDate(next.startDate, next.days - 1);
+        }
+        if (field === "endDate" && next.startDate && next.endDate) {
+          next.days = diffDaysInclusive(next.startDate, next.endDate);
+        }
+        if (field === "days" && next.startDate && next.days) {
+          next.endDate = addDaysToDate(next.startDate, next.days - 1);
+        }
+
+        return next;
+      }),
+    );
+  };
+
+  const handleSaveApiKey = () => {
+    if (!apiKey.trim()) return;
+    saveKimiApiKey(apiKey);
+    setShowKeyInput(false);
+    setError("");
+  };
+
+  const handleSaveAll = async () => {
+    setSaveError("");
+
+    const validLeaves = leaves.filter((leave) => leave.employeeName.trim());
+    if (!validLeaves.length) {
+      setSaveError("请至少保留一条包含员工姓名的请假记录。");
+      return;
+    }
+
+    const missingDates = validLeaves.filter((leave) => !leave.startDate || !leave.endDate);
+    if (missingDates.length) {
+      setSaveError(
+        `以下记录缺少开始或结束日期：\n${missingDates
+          .map((leave) => `- ${leave.employeeName || "未命名员工"}`)
+          .join("\n")}`,
+      );
+      return;
+    }
+
+    const invalidRanges = validLeaves.filter((leave) => leave.startDate > leave.endDate);
+    if (invalidRanges.length) {
+      setSaveError(
+        `以下记录的结束日期早于开始日期：\n${invalidRanges
+          .map((leave) => `- ${leave.employeeName || "未命名员工"}`)
+          .join("\n")}`,
+      );
+      return;
+    }
+
+    const unmatched = validLeaves.filter((leave) => !matchUserId(leave.employeeName));
+    if (unmatched.length) {
+      setSaveError(
+        `以下员工未匹配到系统员工：\n${unmatched
+          .map((leave) => `- ${leave.employeeName}`)
+          .join("\n")}`,
+      );
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      await Promise.all(
+        validLeaves.map((leave) =>
+          createLeaveMutation.mutateAsync({
+            userId: matchUserId(leave.employeeName)!,
+            type: leave.type,
+            startDate: leave.startDate,
+            endDate: leave.endDate,
+            days: leave.days,
+            reason: leave.reason.trim() || undefined,
+            status: leave.approved ? "approved" : "pending",
+          }),
+        ),
+      );
+
+      await Promise.all([
+        utils.attendance.list.invalidate(),
+        utils.attendance.stats.invalidate(),
+      ]);
+
+      onSaved?.(validLeaves);
+      onClose();
+    } catch (mutationError: any) {
+      setSaveError(mutationError.message || "批量保存请假记录失败。");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  return (
+    <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-h-[90vh] max-w-4xl overflow-y-auto">
+        <DialogHeader>
+          <div className="flex items-center gap-2">
+            <Wand2 className="h-5 w-5 text-blue-600" />
+            <DialogTitle>智能识别请假记录</DialogTitle>
+          </div>
+          <DialogDescription>
+            上传聊天截图，识别后的请假记录可直接修正并入库。
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-5">
+          <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <p className="text-sm font-medium text-gray-900">OCR API Key</p>
+                <p className="mt-1 text-xs text-gray-500">
+                  默认使用 Kimi 视觉识别，保存后会复用本机缓存。
+                </p>
+              </div>
+              {!showKeyInput && apiKey ? (
+                <button
+                  onClick={() => setShowKeyInput(true)}
+                  className="text-xs font-medium text-blue-600 hover:text-blue-700"
+                >
+                  修改
+                </button>
+              ) : null}
+            </div>
+
+            {showKeyInput || !apiKey ? (
+              <div className="mt-3 flex flex-col gap-3 md:flex-row">
+                <div className="relative w-full">
+                  <Key className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
+                  <input
+                    type="password"
+                    value={apiKey}
+                    onChange={(event) => setApiKey(event.target.value)}
+                    placeholder="sk-..."
+                    className="w-full rounded-lg border border-gray-300 bg-white py-2 pl-9 pr-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                  />
+                </div>
+                <button
+                  onClick={handleSaveApiKey}
+                  className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+                >
+                  保存
+                </button>
+              </div>
+            ) : (
+              <p className="mt-3 text-sm text-emerald-700">已配置：sk-****{apiKey.slice(-4)}</p>
+            )}
+          </div>
+
+          {!imagePreview ? (
+            <div
+              onDrop={(event) => {
+                event.preventDefault();
+                const file = event.dataTransfer.files[0];
+                if (file?.type.startsWith("image/")) {
+                  void handleImage(file);
+                }
+              }}
+              onDragOver={(event) => event.preventDefault()}
+              onClick={() => fileInputRef.current?.click()}
+              className="cursor-pointer rounded-2xl border-2 border-dashed border-gray-300 bg-gray-50 px-6 py-14 text-center hover:border-blue-400 hover:bg-blue-50/40"
+            >
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                onChange={(event) => {
+                  const file = event.target.files?.[0];
+                  if (file) {
+                    void handleImage(file);
+                  }
+                }}
+                className="hidden"
+              />
+              <Upload className="mx-auto h-10 w-10 text-gray-400" />
+              <p className="mt-3 text-sm font-medium text-gray-700">点击上传或拖拽聊天截图到此处</p>
+              <p className="mt-1 text-xs text-gray-500">支持直接粘贴截图（Ctrl+V）</p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <div className="relative overflow-hidden rounded-2xl border border-gray-200 bg-gray-50">
+                <img
+                  src={imagePreview}
+                  alt="leave-preview"
+                  className="mx-auto max-h-[360px] object-contain"
+                />
+                <button
+                  onClick={resetState}
+                  className="absolute right-3 top-3 rounded-full bg-black/60 p-2 text-white hover:bg-black/75"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              </div>
+
+              <label className="flex items-center gap-2 text-xs text-gray-600">
+                <input
+                  type="checkbox"
+                  checked={highQuality}
+                  onChange={(event) => {
+                    const nextValue = event.target.checked;
+                    setHighQuality(nextValue);
+                    if (rawFile) {
+                      void handleImage(rawFile, nextValue);
+                    }
+                  }}
+                  className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                />
+                高清模式不压缩原图，适合长截图，建议文件小于 4MB。
+              </label>
+
+              <button
+                onClick={handleRecognize}
+                disabled={recognizeMutation.isPending}
+                className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
+              >
+                {recognizeMutation.isPending ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <ScanSearch className="h-4 w-4" />
+                )}
+                {recognizeMutation.isPending ? "识别中..." : "开始识别"}
+              </button>
+            </div>
+          )}
+
+          {error ? (
+            <div className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+              <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0" />
+              <span>{error}</span>
+            </div>
+          ) : null}
+
+          {rawText ? (
+            <div className="rounded-2xl border border-gray-200 bg-white p-4">
+              <h3 className="text-sm font-semibold text-gray-900">识别原文</h3>
+              <pre className="mt-3 max-h-40 overflow-auto whitespace-pre-wrap rounded-lg bg-gray-50 p-3 text-xs text-gray-600">
+                {rawText}
+              </pre>
+            </div>
+          ) : null}
+
+          {leaves.length ? (
+            <div className="space-y-4 rounded-2xl border border-gray-200 bg-white p-5">
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <h3 className="text-base font-semibold text-gray-900">识别结果预览</h3>
+                  <p className="mt-1 text-sm text-gray-500">
+                    无法匹配系统员工的记录不能直接保存，需要先手动指定员工。
+                  </p>
+                </div>
+                <button
+                  onClick={() => setLeaves((current) => [...current, createEmptyLeave()])}
+                  className="inline-flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                >
+                  <Plus className="h-4 w-4" />
+                  手动添加
+                </button>
+              </div>
+
+              <div className="space-y-4">
+                {leaves.map((leave, index) => {
+                  const matchStatus = getMatchStatus(leave.employeeName);
+
+                  return (
+                    <div
+                      key={`${leave.employeeName}-${leave.startDate}-${index}`}
+                      className="rounded-2xl border border-gray-200 p-4"
+                    >
+                      <div className="mb-4 flex items-center justify-between">
+                        <p className="text-sm font-semibold text-gray-900">记录 {index + 1}</p>
+                        <button
+                          onClick={() =>
+                            setLeaves((current) =>
+                              current.filter((_, currentIndex) => currentIndex !== index),
+                            )
+                          }
+                          className="rounded-lg border border-red-200 p-2 text-red-500 hover:bg-red-50"
+                          title="删除"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
+
+                      <div className="grid gap-4 md:grid-cols-2">
+                        <div>
+                          <label className="mb-1 block text-xs font-medium text-gray-500">
+                            员工姓名
+                            {matchStatus === "matched" ? (
+                              <span className="ml-2 text-[10px] text-emerald-600">已匹配</span>
+                            ) : null}
+                            {matchStatus === "unmatched" ? (
+                              <span className="ml-2 text-[10px] text-red-500">未匹配</span>
+                            ) : null}
+                          </label>
+                          <input
+                            type="text"
+                            value={leave.employeeName}
+                            onChange={(event) =>
+                              updateLeave(index, "employeeName", event.target.value)
+                            }
+                            className={`w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 ${
+                              matchStatus === "unmatched"
+                                ? "border-red-300 bg-red-50"
+                                : "border-gray-300"
+                            }`}
+                          />
+                          {matchStatus === "unmatched" && userList.length ? (
+                            <select
+                              value=""
+                              onChange={(event) => {
+                                const matched = userList.find(
+                                  (user) => String(user.id) === event.target.value,
+                                );
+                                if (matched?.name) {
+                                  updateLeave(index, "employeeName", matched.name);
+                                }
+                              }}
+                              className="mt-2 w-full rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700 focus:outline-none"
+                            >
+                              <option value="">手动指定系统员工...</option>
+                              {userList.map((user) => (
+                                <option key={user.id} value={user.id}>
+                                  {user.name || `用户-${user.id}`}
+                                </option>
+                              ))}
+                            </select>
+                          ) : null}
+                        </div>
+
+                        <div>
+                          <label className="mb-1 block text-xs font-medium text-gray-500">请假类型</label>
+                          <select
+                            value={leave.type}
+                            onChange={(event) =>
+                              updateLeave(
+                                index,
+                                "type",
+                                event.target.value as RecognizedLeave["type"],
+                              )
+                            }
+                            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                          >
+                            {leaveTypeOptions.map(([value, label]) => (
+                              <option key={value} value={value}>
+                                {label}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <div>
+                          <label className="mb-1 block text-xs font-medium text-gray-500">开始日期</label>
+                          <input
+                            type="date"
+                            value={leave.startDate}
+                            onChange={(event) =>
+                              updateLeave(index, "startDate", event.target.value)
+                            }
+                            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="mb-1 block text-xs font-medium text-gray-500">结束日期</label>
+                          <input
+                            type="date"
+                            value={leave.endDate}
+                            onChange={(event) =>
+                              updateLeave(index, "endDate", event.target.value)
+                            }
+                            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="mb-1 block text-xs font-medium text-gray-500">请假天数</label>
+                          <input
+                            type="number"
+                            min={0.5}
+                            step={0.5}
+                            value={leave.days}
+                            onChange={(event) =>
+                              updateLeave(index, "days", Number(event.target.value) || 1)
+                            }
+                            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="mb-1 block text-xs font-medium text-gray-500">记录状态</label>
+                          <select
+                            value={leave.approved ? "approved" : "pending"}
+                            onChange={(event) =>
+                              updateLeave(index, "approved", event.target.value === "approved")
+                            }
+                            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                          >
+                            <option value="approved">已确认</option>
+                            <option value="pending">待确认</option>
+                          </select>
+                        </div>
+
+                        <div className="md:col-span-2">
+                          <label className="mb-1 block text-xs font-medium text-gray-500">请假原因</label>
+                          <input
+                            type="text"
+                            value={leave.reason}
+                            onChange={(event) =>
+                              updateLeave(index, "reason", event.target.value)
+                            }
+                            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ) : null}
+
+          {saveError ? (
+            <div className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700 whitespace-pre-line">
+              <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0" />
+              <span>{saveError}</span>
+            </div>
+          ) : null}
+        </div>
+
+        <DialogFooter>
+          <button
+            onClick={onClose}
+            className="rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+          >
+            取消
+          </button>
+          <button
+            onClick={handleSaveAll}
+            disabled={isSaving || !leaves.length}
+            className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
+          >
+            {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+            {isSaving
+              ? "保存中..."
+              : `保存 ${leaves.filter((leave) => leave.employeeName.trim()).length} 条记录`}
+          </button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}

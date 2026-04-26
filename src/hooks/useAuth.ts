@@ -2,6 +2,7 @@ import { trpc } from "@/providers/trpc";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router";
 import { LOGIN_PATH } from "@/const";
+import { clearAuthTokens, getLocalAuthToken, getWechatAuthToken } from "@/lib/auth-storage";
 
 type UseAuthOptions = {
   redirectOnUnauthenticated?: boolean;
@@ -17,10 +18,10 @@ export function useAuth(options?: UseAuthOptions) {
 
   // Check auth tokens
   const [localToken] = useState<string | null>(() =>
-    localStorage.getItem("local_auth_token")
+    getLocalAuthToken()
   );
   const [wechatToken] = useState<string | null>(() =>
-    localStorage.getItem("wechat_auth_token")
+    getWechatAuthToken()
   );
 
   // Query all three auth systems
@@ -57,8 +58,7 @@ export function useAuth(options?: UseAuthOptions) {
 
   const logout = useCallback(() => {
     // Clear all auth systems
-    localStorage.removeItem("local_auth_token");
-    localStorage.removeItem("wechat_auth_token");
+    clearAuthTokens();
     logoutMutation.mutate(undefined, {
       onSettled: () => {
         window.location.href = redirectPath;

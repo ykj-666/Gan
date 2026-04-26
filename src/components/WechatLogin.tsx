@@ -1,15 +1,18 @@
-import { useState, useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
+import { Loader2, MessageCircle, QrCode, Smartphone, X } from "lucide-react";
 import { trpc } from "@/providers/trpc";
-import { X, QrCode, Smartphone, Loader2, MessageCircle } from "lucide-react";
+import { setWechatAuthToken } from "@/lib/auth-storage";
 
-interface WechatLoginProps {
+type WechatLoginProps = {
   isOpen: boolean;
   onClose: () => void;
-}
+};
 
 export function WechatLogin({ isOpen, onClose }: WechatLoginProps) {
-  const [status, setStatus] = useState<"loading" | "qr" | "polling" | "success" | "error">("loading");
-  const [errorMsg, setErrorMsg] = useState("");
+  const [status, setStatus] = useState<"loading" | "qr" | "polling" | "success" | "error">(
+    "loading",
+  );
+  const [errorMessage, setErrorMessage] = useState("");
   const pollingRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const { data: authUrlData } = trpc.wechatAuth.getAuthUrl.useQuery(undefined, {
@@ -18,23 +21,22 @@ export function WechatLogin({ isOpen, onClose }: WechatLoginProps) {
 
   const mockLogin = trpc.wechatAuth.mockLogin.useMutation({
     onSuccess: (data) => {
-      localStorage.setItem("wechat_auth_token", data.token);
+      setWechatAuthToken(data.token);
       setStatus("success");
       setTimeout(() => {
         window.location.href = "/";
       }, 800);
     },
-    onError: (err) => {
+    onError: (mutationError) => {
       setStatus("error");
-      setErrorMsg(err.message);
+      setErrorMessage(mutationError.message);
     },
   });
 
-  // Simulate QR code scanning flow
   useEffect(() => {
     if (!isOpen) {
       setStatus("loading");
-      setErrorMsg("");
+      setErrorMessage("");
       if (pollingRef.current) {
         clearTimeout(pollingRef.current);
       }
@@ -42,20 +44,13 @@ export function WechatLogin({ isOpen, onClose }: WechatLoginProps) {
     }
 
     if (authUrlData) {
-      if (authUrlData.mockMode) {
-        // In mock mode, show QR simulation
-        setStatus("qr");
-      } else {
-        // Real WeChat mode - show the actual QR URL
-        setStatus("qr");
-      }
+      setStatus("qr");
     }
   }, [isOpen, authUrlData]);
 
   const handleMockScan = () => {
     setStatus("polling");
-    // Simulate scanning delay
-    setTimeout(() => {
+    pollingRef.current = setTimeout(() => {
       mockLogin.mutate({
         nickname: `微信用户${Math.floor(Math.random() * 10000)}`,
       });
@@ -63,18 +58,18 @@ export function WechatLogin({ isOpen, onClose }: WechatLoginProps) {
   };
 
   const handleOpenWechatUrl = () => {
-    if (authUrlData?.url) {
-      // Open WeChat auth in a popup window
-      const width = 500;
-      const height = 600;
-      const left = (window.screen.width - width) / 2;
-      const top = (window.screen.height - height) / 2;
-      window.open(
-        authUrlData.url,
-        "wechat_oauth",
-        `width=${width},height=${height},left=${left},top=${top},toolbar=no,menubar=no`
-      );
-    }
+    if (!authUrlData?.url) return;
+
+    const width = 500;
+    const height = 600;
+    const left = (window.screen.width - width) / 2;
+    const top = (window.screen.height - height) / 2;
+
+    window.open(
+      authUrlData.url,
+      "wechat_oauth",
+      `width=${width},height=${height},left=${left},top=${top},toolbar=no,menubar=no`,
+    );
   };
 
   if (!isOpen) return null;
@@ -83,137 +78,118 @@ export function WechatLogin({ isOpen, onClose }: WechatLoginProps) {
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       <div className="absolute inset-0 bg-black/30 backdrop-blur-sm" onClick={onClose} />
 
-      <div className="relative glass-card w-full max-w-sm mx-4 p-6 shadow-2xl">
-        {/* Header */}
-        <div className="flex items-center justify-between mb-5">
+      <div className="glass-card relative mx-4 w-full max-w-sm p-6 shadow-2xl">
+        <div className="mb-5 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-[#07C160] flex items-center justify-center">
-              <MessageCircle className="w-5 h-5 text-white" />
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#07C160]">
+              <MessageCircle className="h-5 w-5 text-white" />
             </div>
             <h3 className="text-lg font-bold text-gray-900">微信登录</h3>
           </div>
           <button
             onClick={onClose}
-            className="p-2 rounded-lg hover:bg-white/60 transition-colors"
+            className="rounded-lg p-2 transition-colors hover:bg-white/60"
           >
-            <X className="w-5 h-5 text-gray-500" />
+            <X className="h-5 w-5 text-gray-500" />
           </button>
         </div>
 
-        {/* Content */}
         <div className="flex flex-col items-center">
-          {status === "loading" && (
+          {status === "loading" ? (
             <div className="py-10">
-              <Loader2 className="w-8 h-8 animate-spin text-gray-400 mx-auto" />
-              <p className="text-sm text-gray-500 mt-3">正在加载...</p>
+              <Loader2 className="mx-auto h-8 w-8 animate-spin text-gray-400" />
+              <p className="mt-3 text-sm text-gray-500">正在加载授权信息...</p>
             </div>
-          )}
+          ) : null}
 
-          {status === "qr" && (
+          {status === "qr" ? (
             <>
-              {/* QR Code Display */}
-              <div className="relative w-52 h-52 bg-white rounded-2xl p-4 shadow-inner mb-4">
+              <div className="relative mb-4 h-52 w-52 rounded-2xl bg-white p-4 shadow-inner">
                 {authUrlData?.mockMode ? (
-                  // Mock mode - show simulated QR code
-                  <div className="w-full h-full flex flex-col items-center justify-center border-2 border-dashed border-gray-200 rounded-xl">
-                    <QrCode className="w-16 h-16 text-gray-300 mb-2" />
-                    <p className="text-[10px] text-gray-400 text-center px-4">
+                  <div className="flex h-full w-full flex-col items-center justify-center rounded-xl border-2 border-dashed border-gray-200">
+                    <QrCode className="mb-2 h-16 w-16 text-gray-300" />
+                    <p className="px-4 text-center text-[10px] text-gray-400">
                       模拟二维码
                       <br />
-                      (开发模式)
+                      （开发模式）
                     </p>
                   </div>
                 ) : (
-                  // Real mode - would embed actual WeChat QR
-                  <div className="w-full h-full flex items-center justify-center">
+                  <div className="flex h-full w-full items-center justify-center">
                     <iframe
                       src={authUrlData?.url}
-                      className="w-full h-full border-0"
+                      className="h-full w-full border-0"
                       title="WeChat QR"
                     />
                   </div>
                 )}
 
-                {/* Scan overlay animation */}
-                <div className="absolute inset-0 rounded-2xl overflow-hidden pointer-events-none">
+                <div className="pointer-events-none absolute inset-0 overflow-hidden rounded-2xl">
                   <div
-                    className="absolute left-0 right-0 h-0.5 bg-gradient-to-r from-transparent via-[#07C160] to-transparent animate-scan"
+                    className="absolute left-0 right-0 h-0.5 animate-scan bg-gradient-to-r from-transparent via-[#07C160] to-transparent"
                     style={{ animation: "scan 2s linear infinite" }}
                   />
                 </div>
               </div>
 
-              <p className="text-sm text-gray-600 text-center mb-1">
-                请使用微信扫一扫登录
-              </p>
-              <p className="text-xs text-gray-400 text-center mb-4">
-                刷新二维码
-              </p>
+              <p className="mb-1 text-center text-sm text-gray-600">请使用微信扫一扫登录</p>
+              <p className="mb-4 text-center text-xs text-gray-400">二维码失效后请重新打开</p>
 
-              {/* Mock scan button for development */}
-              {authUrlData?.mockMode && (
+              {authUrlData?.mockMode ? (
                 <button
                   onClick={handleMockScan}
-                  className="btn-jelly flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm font-semibold text-white shadow-lg mb-3"
+                  className="btn-jelly mb-3 flex items-center gap-2 rounded-xl px-6 py-2.5 text-sm font-semibold text-white shadow-lg"
                   style={{ background: "#07C160" }}
                 >
-                  <Smartphone className="w-4 h-4" />
+                  <Smartphone className="h-4 w-4" />
                   模拟扫码登录
                 </button>
-              )}
-
-              {!authUrlData?.mockMode && (
+              ) : (
                 <button
                   onClick={handleOpenWechatUrl}
-                  className="btn-jelly flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm font-semibold text-white shadow-lg mb-3"
+                  className="btn-jelly mb-3 flex items-center gap-2 rounded-xl px-6 py-2.5 text-sm font-semibold text-white shadow-lg"
                   style={{ background: "#07C160" }}
                 >
-                  <MessageCircle className="w-4 h-4" />
+                  <MessageCircle className="h-4 w-4" />
                   打开微信授权
                 </button>
               )}
 
-              <div className="flex items-center gap-2 text-xs text-gray-400 mt-2">
-                <Smartphone className="w-3.5 h-3.5" />
-                <span>微信 v7.0 以上版本支持</span>
+              <div className="mt-2 flex items-center gap-2 text-xs text-gray-400">
+                <Smartphone className="h-3.5 w-3.5" />
+                <span>支持微信 7.0 及以上版本</span>
               </div>
             </>
-          )}
+          ) : null}
 
-          {status === "polling" && (
+          {status === "polling" ? (
             <div className="py-10 text-center">
-              <div className="relative w-16 h-16 mx-auto mb-4">
-                <Loader2 className="w-16 h-16 animate-spin text-[#07C160]" />
-                <Smartphone className="w-6 h-6 text-gray-500 absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2" />
+              <div className="relative mx-auto mb-4 h-16 w-16">
+                <Loader2 className="h-16 w-16 animate-spin text-[#07C160]" />
+                <Smartphone className="absolute left-1/2 top-1/2 h-6 w-6 -translate-x-1/2 -translate-y-1/2 text-gray-500" />
               </div>
-              <p className="text-sm font-semibold text-gray-700 mb-1">
-                扫码成功
-              </p>
+              <p className="mb-1 text-sm font-semibold text-gray-700">扫码成功</p>
               <p className="text-xs text-gray-500">正在确认登录...</p>
             </div>
-          )}
+          ) : null}
 
-          {status === "success" && (
+          {status === "success" ? (
             <div className="py-10 text-center">
-              <div className="w-16 h-16 rounded-full bg-[#07C160]/10 flex items-center justify-center mx-auto mb-4">
-                <MessageCircle className="w-8 h-8 text-[#07C160]" />
+              <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-[#07C160]/10">
+                <MessageCircle className="h-8 w-8 text-[#07C160]" />
               </div>
-              <p className="text-sm font-semibold text-gray-700 mb-1">
-                登录成功
-              </p>
+              <p className="mb-1 text-sm font-semibold text-gray-700">登录成功</p>
               <p className="text-xs text-gray-500">正在跳转...</p>
             </div>
-          )}
+          ) : null}
 
-          {status === "error" && (
+          {status === "error" ? (
             <div className="py-8 text-center">
-              <div className="w-12 h-12 rounded-full bg-red-50 flex items-center justify-center mx-auto mb-3">
-                <X className="w-6 h-6 text-red-500" />
+              <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-red-50">
+                <X className="h-6 w-6 text-red-500" />
               </div>
-              <p className="text-sm font-semibold text-gray-700 mb-1">
-                登录失败
-              </p>
-              <p className="text-xs text-gray-500">{errorMsg}</p>
+              <p className="mb-1 text-sm font-semibold text-gray-700">登录失败</p>
+              <p className="text-xs text-gray-500">{errorMessage}</p>
               <button
                 onClick={() => setStatus("qr")}
                 className="mt-4 text-sm text-[#07C160] hover:underline"
@@ -221,7 +197,7 @@ export function WechatLogin({ isOpen, onClose }: WechatLoginProps) {
                 重试
               </button>
             </div>
-          )}
+          ) : null}
         </div>
       </div>
 

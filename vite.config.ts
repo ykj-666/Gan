@@ -13,6 +13,9 @@ export default defineConfig({
   server: {
     port: 3000,
   },
+  ssr: {
+    external: ["@libsql/client", "libsql"],
+  },
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),

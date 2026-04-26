@@ -1,5 +1,5 @@
 import { trpc } from "@/providers/trpc";
-import { Loader2, FilePlus, Pencil, UserCheck, CheckCircle2, RefreshCw } from "lucide-react";
+import { CheckCircle2, FilePlus, Loader2, Pencil, RefreshCw, UserCheck } from "lucide-react";
 
 const typeConfig: Record<string, { icon: typeof FilePlus; color: string; bg: string }> = {
   task_created: { icon: FilePlus, color: "#3B82F6", bg: "rgba(59,130,246,0.12)" },
@@ -7,26 +7,37 @@ const typeConfig: Record<string, { icon: typeof FilePlus; color: string; bg: str
   task_assigned: { icon: UserCheck, color: "#10B981", bg: "rgba(16,185,129,0.12)" },
   task_completed: { icon: CheckCircle2, color: "#10B981", bg: "rgba(16,185,129,0.12)" },
   status_changed: { icon: RefreshCw, color: "#F59E0B", bg: "rgba(245,158,11,0.12)" },
+  user_created: { icon: UserCheck, color: "#3B82F6", bg: "rgba(59,130,246,0.12)" },
+  user_updated: { icon: Pencil, color: "#8B5CF6", bg: "rgba(139,92,246,0.12)" },
+  user_deleted: { icon: CheckCircle2, color: "#EF4444", bg: "rgba(239,68,68,0.12)" },
+  user_imported: { icon: FilePlus, color: "#0EA5E9", bg: "rgba(14,165,233,0.12)" },
+  leave_created: { icon: FilePlus, color: "#10B981", bg: "rgba(16,185,129,0.12)" },
+  leave_deleted: { icon: CheckCircle2, color: "#EF4444", bg: "rgba(239,68,68,0.12)" },
+  leave_status_changed: { icon: RefreshCw, color: "#F59E0B", bg: "rgba(245,158,11,0.12)" },
+  trip_created: { icon: FilePlus, color: "#3B82F6", bg: "rgba(59,130,246,0.12)" },
+  trip_updated: { icon: Pencil, color: "#8B5CF6", bg: "rgba(139,92,246,0.12)" },
+  trip_deleted: { icon: CheckCircle2, color: "#EF4444", bg: "rgba(239,68,68,0.12)" },
+  trip_imported: { icon: FilePlus, color: "#0EA5E9", bg: "rgba(14,165,233,0.12)" },
 };
 
 export function ActivityFeed() {
-  const { data: activities, isLoading } = trpc.activity.list.useQuery({ limit: 10 });
+  const { data: activities, isLoading } = trpc.activity.list.useQuery({ limit: 10, days: 14 });
 
   if (isLoading) {
     return (
-      <div className="glass-card p-6 h-[300px] flex items-center justify-center">
-        <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
+      <div className="flex h-[300px] items-center justify-center rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+        <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
       </div>
     );
   }
 
   return (
-    <div className="glass-card p-6">
-      <h3 className="text-base font-bold text-gray-900 mb-4">最近动态</h3>
+    <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+      <h3 className="mb-4 text-base font-bold text-gray-900">最近动作</h3>
 
-      <div className="space-y-3 max-h-[320px] overflow-y-auto scrollbar-thin">
+      <div className="max-h-[320px] space-y-3 overflow-y-auto scrollbar-thin">
         {!activities?.length ? (
-          <p className="text-sm text-gray-400 text-center py-8">暂无动态</p>
+          <p className="py-8 text-center text-sm text-gray-400">暂无动态</p>
         ) : (
           activities.map((activity) => {
             const config = typeConfig[activity.type] ?? typeConfig.task_created;
@@ -43,19 +54,20 @@ export function ActivityFeed() {
             return (
               <div
                 key={activity.id}
-                className="flex items-start gap-3 p-2.5 rounded-xl hover:bg-white/40 transition-colors"
+                className="flex items-start gap-3 rounded-xl p-2.5 transition-colors hover:bg-gray-50"
               >
                 <div
-                  className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5"
+                  className="mt-0.5 flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg"
                   style={{ background: config.bg }}
                 >
-                  <Icon className="w-4 h-4" style={{ color: config.color }} />
+                  <Icon className="h-4 w-4" style={{ color: config.color }} />
                 </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm text-gray-700 leading-snug">
-                    {activity.description}
-                  </p>
-                  <p className="text-[11px] text-gray-400 mt-1">{time}</p>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm leading-snug text-gray-700">{activity.description}</p>
+                  <div className="mt-1 flex items-center gap-2 text-[11px] text-gray-400">
+                    <span>{time}</span>
+                    <span>{activity.actorName || "系统"}</span>
+                  </div>
                 </div>
               </div>
             );

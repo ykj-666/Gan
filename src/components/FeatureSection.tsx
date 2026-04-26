@@ -1,121 +1,75 @@
-import { useEffect, useRef } from "react";
-import gsap from "gsap";
-import { ScrollTrigger } from "gsap/ScrollTrigger";
-import { Zap, RefreshCw, Shield } from "lucide-react";
+import { AlertTriangle, BarChart3, CalendarCheck2, Users } from "lucide-react";
+import { useNavigate } from "react-router";
 
-gsap.registerPlugin(ScrollTrigger);
-
-const features = [
+const shortcuts = [
   {
-    icon: Zap,
-    title: "极速响应",
-    description: "毫秒级任务状态同步，让团队协作零延迟",
-    image: "/images/feature-focus.jpg",
-    gradient: "from-amber-400 to-orange-500",
+    icon: AlertTriangle,
+    title: "异常处理",
+    description: "集中处理逾期任务、请假占用和出差异常。",
+    value: "优先收口风险",
+    path: "/exceptions",
+    color: "text-red-600",
+    bg: "bg-red-50",
   },
   {
-    icon: RefreshCw,
-    title: "实时同步",
-    description: "多端实时数据同步，确保所有人看到最新状态",
-    image: "/images/feature-sync.jpg",
-    gradient: "from-emerald-400 to-teal-500",
+    icon: CalendarCheck2,
+    title: "考勤管理",
+    description: "统一处理请假和出差考勤，支持直接编辑记录。",
+    value: "统一考勤入口",
+    path: "/attendance",
+    color: "text-blue-600",
+    bg: "bg-blue-50",
   },
   {
-    icon: Shield,
-    title: "安全加密",
-    description: "企业级数据加密，保障团队信息安全",
-    image: "/images/feature-security.jpg",
-    gradient: "from-blue-400 to-indigo-500",
+    icon: Users,
+    title: "员工负载",
+    description: "从员工维度查看当前负载、请假占用和出差异常。",
+    value: "按人调配资源",
+    path: "/team",
+    color: "text-emerald-600",
+    bg: "bg-emerald-50",
   },
-];
+  {
+    icon: BarChart3,
+    title: "报表导出",
+    description: "导出管理月报、任务台账、请假和出差统计。",
+    value: "直接产出交付件",
+    path: "/reports",
+    color: "text-amber-600",
+    bg: "bg-amber-50",
+  },
+] as const;
 
 export function FeatureSection() {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const cardsRef = useRef<(HTMLDivElement | null)[]>([]);
-
-  useEffect(() => {
-    const container = containerRef.current;
-    if (!container) return;
-
-    const cards = cardsRef.current.filter(Boolean) as HTMLDivElement[];
-
-    // Initial state
-    gsap.set(cards, {
-      rotateY: 180,
-      xPercent: -100,
-      opacity: 0,
-    });
-
-    const tl = gsap.timeline({
-      scrollTrigger: {
-        trigger: container,
-        pin: true,
-        start: "top top",
-        end: "+=200%",
-        scrub: 1,
-      },
-    });
-
-    tl.to(cards, {
-      rotateY: 0,
-      xPercent: 0,
-      opacity: 1,
-      stagger: 0.15,
-      duration: 1,
-      ease: "power2.out",
-    });
-
-    return () => {
-      ScrollTrigger.getAll().forEach((st) => {
-        if (st.vars.trigger === container) st.kill();
-      });
-    };
-  }, []);
+  const navigate = useNavigate();
 
   return (
-    <div
-      ref={containerRef}
-      className="relative w-full min-h-screen flex items-center justify-center overflow-hidden"
-    >
-      <div className="text-center mb-10 absolute top-16 left-0 right-0">
-        <h2 className="text-3xl font-bold text-gray-900 mb-2">赋能每一次协作</h2>
-        <p className="text-gray-500 text-base">为高效团队打造的专业工具</p>
+    <section className="w-full rounded-2xl border border-gray-200 bg-white px-6 py-8 lg:px-8">
+      <div className="mb-6">
+        <h2 className="text-xl font-semibold text-gray-900">管理快捷入口</h2>
+        <p className="mt-1 text-sm text-gray-500">围绕管理者日常动作收敛常用入口，减少跨模块来回查找。</p>
       </div>
 
-      <div className="perspective-1000 flex items-center justify-center gap-8 px-8 mt-20">
-        {features.map((feature, index) => {
-          const Icon = feature.icon;
+      <div className="grid gap-5 lg:grid-cols-4">
+        {shortcuts.map((item) => {
+          const Icon = item.icon;
+
           return (
-            <div
-              key={feature.title}
-              ref={(el) => { cardsRef.current[index] = el; }}
-              className="backface-hidden w-[300px] h-[380px] glass-card p-6 flex flex-col items-center text-center shadow-xl"
-              style={{
-                transformStyle: "preserve-3d",
-              }}
+            <button
+              key={item.title}
+              onClick={() => navigate(item.path)}
+              className="rounded-xl border border-gray-200 bg-gray-50 p-5 text-left transition-all duration-200 hover:border-gray-300 hover:bg-white hover:shadow-sm"
             >
-              <div className="w-full h-40 rounded-xl overflow-hidden mb-5">
-                <img
-                  src={feature.image}
-                  alt={feature.title}
-                  className="w-full h-full object-cover"
-                />
+              <div className={`mb-4 flex h-11 w-11 items-center justify-center rounded-lg ${item.bg}`}>
+                <Icon className={`h-5 w-5 ${item.color}`} />
               </div>
-              <div
-                className={`w-12 h-12 rounded-xl bg-gradient-to-br ${feature.gradient} flex items-center justify-center mb-4 shadow-lg`}
-              >
-                <Icon className="w-6 h-6 text-white" />
-              </div>
-              <h3 className="text-lg font-bold text-gray-900 mb-2">
-                {feature.title}
-              </h3>
-              <p className="text-sm text-gray-500 leading-relaxed">
-                {feature.description}
-              </p>
-            </div>
+              <h3 className="text-base font-semibold text-gray-900">{item.title}</h3>
+              <p className="mt-2 text-sm leading-6 text-gray-500">{item.description}</p>
+              <p className="mt-4 text-xs font-medium text-gray-700">{item.value}</p>
+            </button>
           );
         })}
       </div>
-    </div>
+    </section>
   );
 }

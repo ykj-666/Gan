@@ -1,0 +1,9 @@
+{
+  "name": "gan-deploy-tool",
+  "version": "1.0.0",
+  "private": true,
+  "dependencies": {
+    "archiver": "^7.0.1",
+    "ssh2": "^1.16.0"
+  }
+}

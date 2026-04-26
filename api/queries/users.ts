@@ -17,8 +17,15 @@ export async function upsertUser(data: InsertUser) {
   const values = { ...data };
   const updateSet: Partial<InsertUser> = {
     lastSignInAt: new Date(),
-    ...data,
+    updatedAt: new Date(),
   };
+
+  if (data.name !== undefined) updateSet.name = data.name;
+  if (data.department !== undefined) updateSet.department = data.department;
+  if (data.email !== undefined) updateSet.email = data.email;
+  if (data.avatar !== undefined) updateSet.avatar = data.avatar;
+  if (data.passwordHash !== undefined) updateSet.passwordHash = data.passwordHash;
+  if (data.role !== undefined) updateSet.role = data.role;
 
   if (
     values.role === undefined &&
@@ -32,5 +39,8 @@ export async function upsertUser(data: InsertUser) {
   await getDb()
     .insert(schema.users)
     .values(values)
-    .onDuplicateKeyUpdate({ set: updateSet });
+    .onConflictDoUpdate({
+      target: schema.users.unionId,
+      set: updateSet,
+    });
 }

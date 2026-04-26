@@ -1,5 +1,6 @@
-import { drizzle } from "drizzle-orm/mysql2";
-import { env } from "../lib/env";
+import { drizzle } from "drizzle-orm/libsql";
+import { createClient } from "@libsql/client";
+import * as path from "path";
 import * as schema from "@db/schema";
 import * as relations from "@db/relations";
 
@@ -9,10 +10,9 @@ let instance: ReturnType<typeof drizzle<typeof fullSchema>>;
 
 export function getDb() {
   if (!instance) {
-    instance = drizzle(env.databaseUrl, {
-      mode: "planetscale",
-      schema: fullSchema,
-    });
+    const dbPath = path.join(process.cwd(), "local.db");
+    const client = createClient({ url: `file:${dbPath}` });
+    instance = drizzle(client, { schema: fullSchema });
   }
   return instance;
 }

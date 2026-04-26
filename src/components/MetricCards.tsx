@@ -1,104 +1,108 @@
 import { trpc } from "@/providers/trpc";
-import { AlertTriangle, Clock, CheckCircle2, TrendingUp, Loader2 } from "lucide-react";
+import { AlertTriangle, BriefcaseBusiness, CheckCircle2, Clock3, Loader2 } from "lucide-react";
 
-const statusConfig = {
-  todo: {
-    label: "待处理",
+const cardConfig = [
+  {
+    key: "todo",
+    label: "待处理任务",
+    icon: AlertTriangle,
     color: "#EF4444",
     bgColor: "rgba(239, 68, 68, 0.12)",
-    icon: AlertTriangle,
   },
-  in_progress: {
-    label: "进行中",
-    color: "#10B981",
-    bgColor: "rgba(16, 185, 129, 0.12)",
-    icon: Clock,
-  },
-  done: {
-    label: "已完成",
+  {
+    key: "inProgress",
+    label: "进行中任务",
+    icon: Clock3,
     color: "#3B82F6",
     bgColor: "rgba(59, 130, 246, 0.12)",
-    icon: CheckCircle2,
   },
-};
+  {
+    key: "done",
+    label: "已完成任务",
+    icon: CheckCircle2,
+    color: "#10B981",
+    bgColor: "rgba(16, 185, 129, 0.12)",
+  },
+  {
+    key: "risk",
+    label: "当前风险项",
+    icon: BriefcaseBusiness,
+    color: "#F59E0B",
+    bgColor: "rgba(245, 158, 11, 0.12)",
+  },
+] as const;
 
 export function MetricCards() {
   const { data: stats, isLoading } = trpc.stats.dashboard.useQuery();
 
   if (isLoading || !stats) {
     return (
-      <div className="grid grid-cols-3 gap-5">
-        {[0, 1, 2].map((i) => (
+      <div className="grid grid-cols-4 gap-5">
+        {[0, 1, 2, 3].map((index) => (
           <div
-            key={i}
-            className="glass-card p-6 h-[120px] flex items-center justify-center"
+            key={index}
+            className="flex h-[120px] items-center justify-center rounded-xl border border-gray-200 bg-white p-6 shadow-sm"
           >
-            <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
+            <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
           </div>
         ))}
       </div>
     );
   }
 
-  const metrics = [
-    {
-      key: "todo" as const,
+  const riskCount =
+    stats.managerFocus.overdueTasks.length +
+    stats.managerFocus.activeLeaves.length +
+    stats.managerFocus.tripAlerts.length;
+
+  const metricMap = {
+    todo: {
       count: stats.overview.todo,
-      change: "+2",
+      hint: `紧急任务 ${stats.overview.urgent} 项`,
     },
-    {
-      key: "in_progress" as const,
+    inProgress: {
       count: stats.overview.inProgress,
-      change: "+1",
+      hint: `审核中 ${stats.overview.review} 项`,
     },
-    {
-      key: "done" as const,
+    done: {
       count: stats.overview.done,
-      change: "+4",
+      hint: `完成率 ${stats.overview.completionRate}%`,
     },
-  ];
+    risk: {
+      count: riskCount,
+      hint: `本周新增任务 ${stats.overview.thisWeekNew} 项`,
+    },
+  };
 
   return (
-    <div className="grid grid-cols-3 gap-5">
-      {metrics.map((metric) => {
-        const config = statusConfig[metric.key];
-        const Icon = config.icon;
+    <div className="grid grid-cols-4 gap-5">
+      {cardConfig.map((metric, index) => {
+        const Icon = metric.icon;
+        const value = metricMap[metric.key];
+
         return (
           <div
             key={metric.key}
-            className="glass-card p-6 animate-float-in"
-            style={{ animationDelay: `${metrics.indexOf(metric) * 0.1}s` }}
+            className="animate-float-in rounded-xl border border-gray-200 bg-white p-6 shadow-sm"
+            style={{ animationDelay: `${index * 0.08}s` }}
           >
-            <div className="flex items-start justify-between">
-              <div>
-                <div className="flex items-center gap-2 mb-3">
-                  <div
-                    className="w-8 h-8 rounded-lg flex items-center justify-center"
-                    style={{ background: config.bgColor }}
-                  >
-                    <Icon className="w-4 h-4" style={{ color: config.color }} />
-                  </div>
-                  <span
-                    className="status-badge"
-                    style={{
-                      background: config.bgColor,
-                      color: config.color,
-                    }}
-                  >
-                    {config.label}
-                  </span>
-                </div>
-                <p className="text-3xl font-bold text-gray-900 tracking-tight">
-                  {metric.count}
-                </p>
-                <div className="flex items-center gap-1 mt-1">
-                  <TrendingUp className="w-3.5 h-3.5 text-emerald-500" />
-                  <span className="text-xs font-medium text-emerald-600">
-                    {metric.change} 本周
-                  </span>
-                </div>
+            <div className="mb-3 flex items-center gap-2">
+              <div
+                className="flex h-8 w-8 items-center justify-center rounded-lg"
+                style={{ background: metric.bgColor }}
+              >
+                <Icon className="h-4 w-4" style={{ color: metric.color }} />
               </div>
+              <span
+                className="rounded-full px-2 py-1 text-xs font-semibold"
+                style={{ background: metric.bgColor, color: metric.color }}
+              >
+                {metric.label}
+              </span>
             </div>
+
+            <p className="text-3xl font-bold tracking-tight text-gray-900">{value.count}</p>
+            <p className="mt-2 text-xs font-medium text-gray-500">{value.hint}</p>
           </div>
         );
       })}

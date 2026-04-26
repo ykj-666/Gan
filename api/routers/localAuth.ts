@@ -70,7 +70,7 @@ export const localAuthRouter = createRouter({
         role: "user",
       });
 
-      const userId = Number(result[0].insertId);
+      const userId = Number(result.lastInsertRowid);
       const token = await signLocalToken({ userId, username: input.username });
 
       return {

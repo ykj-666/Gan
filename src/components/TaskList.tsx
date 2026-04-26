@@ -1,33 +1,20 @@
 import { useState } from "react";
 import { trpc } from "@/providers/trpc";
 import {
-  Search,
-  Plus,
+  ArrowUpDown,
   Filter,
+  Loader2,
   MoreHorizontal,
   Pencil,
+  Plus,
+  Search,
   Trash2,
-  ArrowUpDown,
-  Loader2,
 } from "lucide-react";
-import type { Task } from "@db/schema";
-
-const statusMap: Record<string, { label: string; color: string; bg: string }> = {
-  todo: { label: "待处理", color: "#EF4444", bg: "rgba(239,68,68,0.12)" },
-  in_progress: { label: "进行中", color: "#10B981", bg: "rgba(16,185,129,0.12)" },
-  review: { label: "审核中", color: "#F59E0B", bg: "rgba(245,158,11,0.12)" },
-  done: { label: "已完成", color: "#3B82F6", bg: "rgba(59,130,246,0.12)" },
-};
-
-const priorityMap: Record<string, { label: string; color: string }> = {
-  low: { label: "低", color: "#6B7280" },
-  medium: { label: "中", color: "#3B82F6" },
-  high: { label: "高", color: "#F59E0B" },
-  urgent: { label: "紧急", color: "#EF4444" },
-};
+import { TASK_PRIORITY_META, TASK_STATUS_META, TASK_STATUS_OPTIONS } from "@/lib/task-meta";
+import type { TaskListItem } from "@/types/task";
 
 interface TaskListProps {
-  onEditTask: (task: Task) => void;
+  onEditTask: (task: TaskListItem) => void;
   onCreateTask: () => void;
 }
 
@@ -37,172 +24,166 @@ export function TaskList({ onEditTask, onCreateTask }: TaskListProps) {
   const [openMenuId, setOpenMenuId] = useState<number | null>(null);
 
   const utils = trpc.useUtils();
-  const { data: tasks, isLoading } = trpc.task.list.useQuery(
-    statusFilter !== "all" ? { status: statusFilter as "todo" | "in_progress" | "review" | "done" } : {}
-  );
+  const { data: tasks, isLoading } = trpc.task.list.useQuery({
+    status:
+      statusFilter !== "all"
+        ? (statusFilter as "todo" | "in_progress" | "review" | "done")
+        : undefined,
+    search: search.trim() || undefined,
+  });
+
   const deleteTask = trpc.task.delete.useMutation({
     onSuccess: () => {
-      utils.task.list.invalidate();
-      utils.stats.dashboard.invalidate();
+      void utils.task.list.invalidate();
+      void utils.stats.dashboard.invalidate();
     },
   });
 
-  const filteredTasks = tasks?.filter((t) =>
-    t.title.toLowerCase().includes(search.toLowerCase())
-  );
-
   return (
-    <div className="glass-card p-6 flex flex-col h-full">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-5">
+    <div className="flex h-full flex-col rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+      <div className="mb-5 flex items-center justify-between">
         <div>
           <h2 className="text-lg font-bold text-gray-900">任务列表</h2>
-          <p className="text-sm text-gray-500 mt-0.5">
-            {filteredTasks?.length ?? 0} 个任务
-          </p>
+          <p className="mt-0.5 text-sm text-gray-500">{tasks?.length ?? 0} 个任务</p>
         </div>
         <button
           onClick={onCreateTask}
-          className="btn-jelly flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold text-white shadow-lg shadow-indigo-500/25 transition-all duration-200 hover:shadow-xl hover:shadow-indigo-500/30"
-          style={{ background: "linear-gradient(135deg, #6366f1, #8b5cf6)" }}
+          className="flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-blue-700"
         >
-          <Plus className="w-4 h-4" />
+          <Plus className="h-4 w-4" />
           新建任务
         </button>
       </div>
 
-      {/* Filters */}
-      <div className="flex items-center gap-3 mb-4">
-        <div className="flex-1 relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+      <div className="mb-4 flex items-center gap-3">
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
           <input
             type="text"
-            placeholder="搜索任务..."
+            placeholder="搜索项目名称或编号"
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="glass-input w-full pl-10 pr-4 py-2.5 text-sm text-gray-800 placeholder:text-gray-400"
+            onChange={(event) => setSearch(event.target.value)}
+            className="w-full rounded-lg border border-gray-300 bg-white py-2.5 pl-10 pr-4 text-sm text-gray-800 placeholder:text-gray-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
           />
         </div>
         <div className="flex items-center gap-1">
-          <Filter className="w-4 h-4 text-gray-400" />
+          <Filter className="h-4 w-4 text-gray-400" />
           <select
             value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-            className="glass-input px-3 py-2.5 text-sm text-gray-700 cursor-pointer"
+            onChange={(event) => setStatusFilter(event.target.value)}
+            className="cursor-pointer rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm text-gray-700 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
           >
             <option value="all">全部状态</option>
-            <option value="todo">待处理</option>
-            <option value="in_progress">进行中</option>
-            <option value="review">审核中</option>
-            <option value="done">已完成</option>
+            {TASK_STATUS_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
           </select>
         </div>
       </div>
 
-      {/* Task items */}
-      <div className="flex-1 overflow-y-auto scrollbar-thin -mx-2 px-2">
+      <div className="-mx-2 flex-1 overflow-y-auto px-2 scrollbar-thin">
         {isLoading ? (
           <div className="flex items-center justify-center py-12">
-            <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
+            <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
           </div>
-        ) : !filteredTasks?.length ? (
+        ) : !tasks?.length ? (
           <div className="flex flex-col items-center justify-center py-12 text-gray-400">
-            <ArrowUpDown className="w-10 h-10 mb-3 opacity-40" />
+            <ArrowUpDown className="mb-3 h-10 w-10 opacity-40" />
             <p className="text-sm">暂无任务</p>
           </div>
         ) : (
           <div className="space-y-2">
-            {filteredTasks.map((task) => {
-              const st = statusMap[task.status] ?? statusMap.todo;
-              const pr = priorityMap[task.priority] ?? priorityMap.medium;
+            {tasks.map((task) => {
+              const status = TASK_STATUS_META[task.status] ?? TASK_STATUS_META.todo;
+              const priority = TASK_PRIORITY_META[task.priority] ?? TASK_PRIORITY_META.medium;
+
               return (
                 <div
                   key={task.id}
-                  className="group flex items-center gap-3 p-3 rounded-xl hover:bg-white/50 transition-all duration-200 cursor-pointer"
+                  className="group flex cursor-pointer items-center gap-3 rounded-xl p-3 transition-all duration-200 hover:bg-gray-50"
                   onClick={() => onEditTask(task)}
                 >
-                  {/* Status dot */}
                   <div
-                    className="w-2.5 h-2.5 rounded-full flex-shrink-0"
-                    style={{ background: st.color }}
+                    className="h-2.5 w-2.5 flex-shrink-0 rounded-full"
+                    style={{ background: status.color }}
                   />
 
-                  {/* Content */}
-                  <div className="flex-1 min-w-0">
+                  <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
-                      <p className="text-sm font-semibold text-gray-800 truncate group-hover:text-indigo-700 transition-colors">
-                        {task.title}
+                      <p className="truncate text-sm font-semibold text-gray-800 transition-colors group-hover:text-indigo-700">
+                        {task.projectName}
                       </p>
                       <span
-                        className="text-[10px] font-bold px-1.5 py-0.5 rounded-full flex-shrink-0"
-                        style={{ color: pr.color, background: `${pr.color}18` }}
+                        className="flex-shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-bold"
+                        style={{ color: priority.color, background: `${priority.color}18` }}
                       >
-                        {pr.label}
+                        {priority.label}
                       </span>
                     </div>
-                    <div className="flex items-center gap-3 mt-1">
+
+                    <div className="mt-1 flex items-center gap-3">
                       <span
                         className="status-badge text-[11px]"
-                        style={{ background: st.bg, color: st.color }}
+                        style={{ background: status.bg, color: status.color }}
                       >
-                        {st.label}
+                        {status.label}
                       </span>
-                      {task.dueDate && (
-                        <span className="text-xs text-gray-400">
-                          截止 {new Date(task.dueDate).toLocaleDateString("zh-CN")}
+                      {task.projectCode ? (
+                        <span className="text-xs text-gray-400">{task.projectCode}</span>
+                      ) : null}
+                      {task.projectType ? (
+                        <span className="rounded-md bg-gray-100/60 px-2 py-0.5 text-xs text-gray-400">
+                          {task.projectType}
                         </span>
-                      )}
-                      {task.tag && (
-                        <span className="text-xs text-gray-400 bg-gray-100/60 px-2 py-0.5 rounded-md">
-                          {task.tag}
-                        </span>
-                      )}
+                      ) : null}
+                      {task.assigneeName ? (
+                        <span className="text-xs text-gray-500">{task.assigneeName}</span>
+                      ) : null}
                     </div>
                   </div>
 
-                  {/* Actions */}
                   <div className="relative">
                     <button
-                      onClick={(e) => {
-                        e.stopPropagation();
+                      onClick={(event) => {
+                        event.stopPropagation();
                         setOpenMenuId(openMenuId === task.id ? null : task.id);
                       }}
-                      className="p-1.5 rounded-lg hover:bg-white/60 opacity-0 group-hover:opacity-100 transition-all duration-200"
+                      className="rounded-lg p-1.5 opacity-0 transition-all duration-200 hover:bg-gray-100 group-hover:opacity-100"
                     >
-                      <MoreHorizontal className="w-4 h-4 text-gray-500" />
+                      <MoreHorizontal className="h-4 w-4 text-gray-500" />
                     </button>
-                    {openMenuId === task.id && (
+
+                    {openMenuId === task.id ? (
                       <>
-                        <div
-                          className="fixed inset-0 z-40"
-                          onClick={() => setOpenMenuId(null)}
-                        />
-                        <div className="absolute right-0 top-full mt-1 w-40 glass-card shadow-xl z-50 p-1.5 space-y-0.5">
+                        <div className="fixed inset-0 z-40" onClick={() => setOpenMenuId(null)} />
+                        <div className="absolute right-0 top-full z-50 mt-1 w-40 space-y-0.5 rounded-xl border border-gray-200 bg-white p-1.5 shadow-sm shadow-xl">
                           <button
-                            onClick={(e) => {
-                              e.stopPropagation();
+                            onClick={(event) => {
+                              event.stopPropagation();
                               onEditTask(task);
                               setOpenMenuId(null);
                             }}
-                            className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-gray-700 hover:bg-white/60 transition-colors"
+                            className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-gray-700 transition-colors hover:bg-gray-50"
                           >
-                            <Pencil className="w-3.5 h-3.5" />
+                            <Pencil className="h-3.5 w-3.5" />
                             编辑任务
                           </button>
                           <button
-                            onClick={(e) => {
-                              e.stopPropagation();
+                            onClick={(event) => {
+                              event.stopPropagation();
                               deleteTask.mutate({ id: task.id });
                               setOpenMenuId(null);
                             }}
-                            className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-red-600 hover:bg-red-50/60 transition-colors"
+                            className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-red-600 transition-colors hover:bg-red-50"
                           >
-                            <Trash2 className="w-3.5 h-3.5" />
+                            <Trash2 className="h-3.5 w-3.5" />
                             删除任务
                           </button>
                         </div>
                       </>
-                    )}
+                    ) : null}
                   </div>
                 </div>
               );

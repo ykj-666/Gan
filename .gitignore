@@ -39,3 +39,9 @@ build/
 # Test coverage
 coverage/
 .nyc_output/
+
+# Local deployment/runtime artifacts
+.known_hosts
+deploy-online.tar.gz
+check_output.txt
+errors.txt

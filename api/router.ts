@@ -5,6 +5,9 @@ import { statsRouter } from "./routers/stats";
 import { userRouter } from "./routers/user";
 import { localAuthRouter } from "./routers/localAuth";
 import { wechatAuthRouter } from "./routers/wechatAuth";
+import { aiRecognitionRouter } from "./routers/ai-recognition";
+import { attendanceRouter } from "./routers/attendance";
+import { businessTripRouter } from "./routers/business-trip";
 import { createRouter, publicQuery } from "./middleware";
 
 export const appRouter = createRouter({
@@ -16,6 +19,9 @@ export const appRouter = createRouter({
   activity: activityRouter,
   stats: statsRouter,
   user: userRouter,
+  ai: aiRecognitionRouter,
+  attendance: attendanceRouter,
+  businessTrip: businessTripRouter,
 });
 
 export type AppRouter = typeof appRouter;

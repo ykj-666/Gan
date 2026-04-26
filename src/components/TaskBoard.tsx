@@ -1,34 +1,41 @@
 import { useState } from "react";
+import { Loader2 } from "lucide-react";
 import { trpc } from "@/providers/trpc";
-import { Plus, Loader2 } from "lucide-react";
-import type { Task } from "@db/schema";
+import { TASK_PRIORITY_META, TASK_STATUS_META } from "@/lib/task-meta";
+import type { TaskListItem } from "@/types/task";
 
 const columns = [
-  { key: "todo" as const, label: "待处理", color: "#EF4444", gradient: "from-red-400 to-rose-500" },
-  { key: "in_progress" as const, label: "进行中", color: "#10B981", gradient: "from-emerald-400 to-teal-500" },
-  { key: "review" as const, label: "审核中", color: "#F59E0B", gradient: "from-amber-400 to-yellow-500" },
-  { key: "done" as const, label: "已完成", color: "#3B82F6", gradient: "from-blue-400 to-indigo-500" },
-];
-
-const priorityMap: Record<string, { label: string; color: string }> = {
-  low: { label: "低", color: "#6B7280" },
-  medium: { label: "中", color: "#3B82F6" },
-  high: { label: "高", color: "#F59E0B" },
-  urgent: { label: "紧急", color: "#EF4444" },
-};
+  { key: "todo", ...TASK_STATUS_META.todo },
+  { key: "in_progress", ...TASK_STATUS_META.in_progress },
+  { key: "review", ...TASK_STATUS_META.review },
+  { key: "done", ...TASK_STATUS_META.done },
+] as const;
 
 interface TaskBoardProps {
-  onEditTask: (task: Task) => void;
+  onEditTask: (task: TaskListItem) => void;
   onCreateTask: () => void;
+  search?: string;
+  priority?: "low" | "medium" | "high" | "urgent";
+  assigneeId?: number;
 }
 
-export function TaskBoard({ onEditTask, onCreateTask }: TaskBoardProps) {
+export function TaskBoard({
+  onEditTask,
+  onCreateTask,
+  search = "",
+  priority,
+  assigneeId,
+}: TaskBoardProps) {
   const utils = trpc.useUtils();
-  const { data: allTasks, isLoading } = trpc.task.list.useQuery({});
+  const { data: allTasks, isLoading } = trpc.task.list.useQuery({
+    search: search.trim() || undefined,
+    priority,
+    assigneeId,
+  });
   const updateStatus = trpc.task.updateStatus.useMutation({
     onSuccess: () => {
-      utils.task.list.invalidate();
-      utils.stats.dashboard.invalidate();
+      void utils.task.list.invalidate();
+      void utils.stats.dashboard.invalidate();
     },
   });
 
@@ -39,15 +46,18 @@ export function TaskBoard({ onEditTask, onCreateTask }: TaskBoardProps) {
     setDraggingId(taskId);
   };
 
-  const handleDragOver = (e: React.DragEvent, columnKey: string) => {
-    e.preventDefault();
+  const handleDragOver = (event: React.DragEvent, columnKey: string) => {
+    event.preventDefault();
     setDragOverColumn(columnKey);
   };
 
-  const handleDrop = (e: React.DragEvent, columnKey: string) => {
-    e.preventDefault();
+  const handleDrop = (event: React.DragEvent, columnKey: string) => {
+    event.preventDefault();
     if (draggingId) {
-      updateStatus.mutate({ id: draggingId, status: columnKey as "todo" | "in_progress" | "review" | "done" });
+      updateStatus.mutate({
+        id: draggingId,
+        status: columnKey as "todo" | "in_progress" | "review" | "done",
+      });
     }
     setDraggingId(null);
     setDragOverColumn(null);
@@ -55,106 +65,109 @@ export function TaskBoard({ onEditTask, onCreateTask }: TaskBoardProps) {
 
   if (isLoading) {
     return (
-      <div className="glass-card p-6 h-full flex items-center justify-center">
-        <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
+      <div className="flex h-full items-center justify-center rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+        <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
+      </div>
+    );
+  }
+
+  if (!allTasks?.length) {
+    return (
+      <div className="flex h-full flex-col items-center justify-center rounded-xl border border-dashed border-gray-200 bg-white p-10 text-center shadow-sm">
+        <p className="text-base font-medium text-gray-700">当前筛选条件下没有任务</p>
+        <button
+          onClick={onCreateTask}
+          className="mt-4 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+        >
+          新建任务
+        </button>
       </div>
     );
   }
 
   return (
-    <div className="glass-card p-6 h-full flex flex-col">
-      <div className="flex items-center justify-between mb-5">
-        <div>
-          <h2 className="text-lg font-bold text-gray-900">任务看板</h2>
-          <p className="text-sm text-gray-500 mt-0.5">
-            拖拽任务卡片变更状态
-          </p>
-        </div>
-        <button
-          onClick={onCreateTask}
-          className="btn-jelly flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold text-white shadow-lg shadow-indigo-500/25"
-          style={{ background: "linear-gradient(135deg, #6366f1, #8b5cf6)" }}
-        >
-          <Plus className="w-4 h-4" />
-          新建任务
-        </button>
-      </div>
-
-      <div className="flex-1 grid grid-cols-4 gap-4 overflow-hidden">
-        {columns.map((col) => {
-          const colTasks = allTasks?.filter((t) => t.status === col.key) ?? [];
-          const isDragOver = dragOverColumn === col.key;
+    <div className="flex h-full flex-col rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+      <div className="grid flex-1 grid-cols-4 gap-4 overflow-hidden">
+        {columns.map((column) => {
+          const tasks = allTasks.filter((task) => task.status === column.key);
+          const isDragOver = dragOverColumn === column.key;
 
           return (
             <div
-              key={col.key}
-              className={`flex flex-col rounded-xl transition-all duration-200 ${
-                isDragOver ? "bg-white/40 ring-2 ring-offset-1" : "bg-white/20"
+              key={column.key}
+              className={`flex flex-col rounded-xl border transition-all duration-200 ${
+                isDragOver ? "border-2 bg-gray-100" : "border-gray-200 bg-gray-50"
               }`}
-              style={isDragOver ? { boxShadow: `0 0 0 2px ${col.color}` } : {}}
-              onDragOver={(e) => handleDragOver(e, col.key)}
-              onDrop={(e) => handleDrop(e, col.key)}
+              style={isDragOver ? { borderColor: column.color } : undefined}
+              onDragOver={(event) => handleDragOver(event, column.key)}
+              onDrop={(event) => handleDrop(event, column.key)}
             >
-              {/* Column header */}
-              <div className="flex items-center justify-between px-3 pt-3 pb-2">
+              <div className="flex items-center justify-between px-3 pb-2 pt-3">
                 <div className="flex items-center gap-2">
-                  <div
-                    className="w-3 h-3 rounded-full"
-                    style={{ background: col.color }}
-                  />
-                  <span className="text-sm font-semibold text-gray-700">
-                    {col.label}
-                  </span>
+                  <div className="h-3 w-3 rounded-full" style={{ background: column.color }} />
+                  <span className="text-sm font-semibold text-gray-700">{column.label}</span>
                 </div>
-                <span className="text-xs font-bold text-gray-400 bg-white/50 px-2 py-0.5 rounded-full">
-                  {colTasks.length}
+                <span className="rounded-full border border-gray-200 bg-white px-2 py-0.5 text-xs font-bold text-gray-400">
+                  {tasks.length}
                 </span>
               </div>
 
-              {/* Tasks */}
-              <div className="flex-1 overflow-y-auto scrollbar-thin p-2 space-y-2">
-                {colTasks.map((task) => {
-                  const pr = priorityMap[task.priority] ?? priorityMap.medium;
-                  return (
-                    <div
-                      key={task.id}
-                      draggable
-                      onDragStart={() => handleDragStart(task.id)}
-                      onClick={() => onEditTask(task)}
-                      className={`p-3 rounded-xl bg-white/70 hover:bg-white/90 cursor-grab active:cursor-grabbing transition-all duration-200 shadow-sm hover:shadow-md ${
-                        draggingId === task.id ? "opacity-40 scale-95" : ""
-                      }`}
-                    >
-                      <p className="text-sm font-semibold text-gray-800 mb-2 line-clamp-2">
-                        {task.title}
-                      </p>
-                      <div className="flex items-center justify-between">
-                        <span
-                          className="text-[10px] font-bold px-1.5 py-0.5 rounded-full"
-                          style={{
-                            color: pr.color,
-                            background: `${pr.color}18`,
-                          }}
-                        >
-                          {pr.label}
-                        </span>
-                        {task.dueDate && (
-                          <span className="text-[11px] text-gray-400">
-                            {new Date(task.dueDate).toLocaleDateString("zh-CN", {
-                              month: "short",
-                              day: "numeric",
-                            })}
+              <div className="flex-1 space-y-2 overflow-y-auto p-2 scrollbar-thin">
+                {tasks.length === 0 ? (
+                  <div className="rounded-lg border border-dashed border-gray-200 bg-white px-3 py-4 text-center text-xs text-gray-400">
+                    当前没有任务
+                  </div>
+                ) : (
+                  tasks.map((task) => {
+                    const priorityMeta =
+                      TASK_PRIORITY_META[task.priority] ?? TASK_PRIORITY_META.medium;
+
+                    return (
+                      <div
+                        key={task.id}
+                        draggable
+                        onDragStart={() => handleDragStart(task.id)}
+                        onClick={() => onEditTask(task)}
+                        className={`cursor-grab rounded-lg border border-gray-200 bg-white p-3 shadow-sm transition-all duration-200 hover:shadow-md active:cursor-grabbing ${
+                          draggingId === task.id ? "scale-95 opacity-40" : ""
+                        }`}
+                      >
+                        <p className="mb-2 line-clamp-2 text-sm font-semibold text-gray-800">
+                          {task.projectName}
+                        </p>
+
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span
+                            className="rounded-full px-1.5 py-0.5 text-[10px] font-bold"
+                            style={{
+                              color: priorityMeta.color,
+                              background: `${priorityMeta.color}18`,
+                            }}
+                          >
+                            {priorityMeta.label}
                           </span>
-                        )}
+
+                          {task.projectCode ? (
+                            <span className="rounded-md bg-gray-100 px-2 py-0.5 text-[11px] text-gray-500">
+                              {task.projectCode}
+                            </span>
+                          ) : null}
+
+                          {task.projectType ? (
+                            <span className="rounded-md bg-gray-100 px-2 py-0.5 text-[11px] text-gray-500">
+                              {task.projectType}
+                            </span>
+                          ) : null}
+                        </div>
+
+                        <div className="mt-3 space-y-1 text-[11px] text-gray-500">
+                          <p>{task.assigneeName || "未分配负责人"}</p>
+                          <p>{task.plannedEndDate ? `截止 ${task.plannedEndDate}` : "未设置截止日期"}</p>
+                        </div>
                       </div>
-                      {task.tag && (
-                        <span className="inline-block mt-2 text-[11px] text-gray-500 bg-gray-100/80 px-2 py-0.5 rounded-md">
-                          {task.tag}
-                        </span>
-                      )}
-                    </div>
-                  );
-                })}
+                    );
+                  })
+                )}
               </div>
             </div>
           );

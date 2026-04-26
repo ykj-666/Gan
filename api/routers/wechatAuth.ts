@@ -97,7 +97,7 @@ export const wechatAuthRouter = createRouter({
             `https://api.dicebear.com/7.x/avataaars/svg?seed=${mockOpenid}`,
           role: "user",
         });
-        userId = Number(result[0].insertId);
+        userId = Number(result.lastInsertRowid);
       }
 
       const token = await signWechatToken({ unionId, openid: mockOpenid });
@@ -203,7 +203,7 @@ export const wechatAuthRouter = createRouter({
           avatar: userData.headimgurl,
           role: "user",
         });
-        userId = Number(result[0].insertId);
+        userId = Number(result.lastInsertRowid);
       }
 
       const token = await signWechatToken({

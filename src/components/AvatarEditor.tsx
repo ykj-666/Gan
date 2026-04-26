@@ -86,12 +86,12 @@ export function AvatarEditor({ currentAvatar, name, userId, onSave, onClose }: A
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
-      <div className="absolute inset-0 bg-black/30 backdrop-blur-sm" onClick={onClose} />
+      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
 
-      <div className="relative glass-card w-full max-w-md mx-4 p-6 shadow-2xl">
+      <div className="relative bg-white border border-gray-200 rounded-xl shadow-sm w-full max-w-md mx-4 p-6">
         <div className="flex items-center justify-between mb-5">
           <h3 className="text-lg font-bold text-gray-900">编辑头像</h3>
-          <button onClick={onClose} className="p-2 rounded-lg hover:bg-white/60 transition-colors">
+          <button onClick={onClose} className="p-2 rounded-lg hover:bg-gray-50 transition-colors">
             <X className="w-5 h-5 text-gray-500" />
           </button>
         </div>
@@ -103,16 +103,16 @@ export function AvatarEditor({ currentAvatar, name, userId, onSave, onClose }: A
               <img
                 src={preview}
                 alt="Preview"
-                className="w-28 h-28 rounded-full object-cover ring-4 ring-white/50 shadow-lg"
+                className="w-28 h-28 rounded-full object-cover ring-4 ring-gray-200 shadow-lg"
               />
             ) : (
-              <div className="w-28 h-28 rounded-full bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center text-white text-3xl font-bold ring-4 ring-white/50 shadow-lg">
+              <div className="w-28 h-28 rounded-full bg-blue-500 flex items-center justify-center text-white text-3xl font-bold ring-4 ring-gray-200 shadow-lg">
                 {name[0]}
               </div>
             )}
             <button
               onClick={handleRandomAvatar}
-              className="absolute bottom-0 right-0 w-8 h-8 rounded-full bg-indigo-500 flex items-center justify-center shadow-md hover:bg-indigo-600 transition-colors"
+              className="absolute bottom-0 right-0 w-8 h-8 rounded-full bg-gray-600 flex items-center justify-center shadow-md hover:bg-gray-700 transition-colors"
               title="随机头像"
             >
               <RefreshCw className="w-4 h-4 text-white" />
@@ -121,7 +121,7 @@ export function AvatarEditor({ currentAvatar, name, userId, onSave, onClose }: A
         </div>
 
         {/* Mode toggle */}
-        <div className="flex items-center gap-1 p-1 bg-white/30 rounded-xl mb-4">
+        <div className="flex items-center gap-1 p-1 bg-gray-100 rounded-xl mb-4">
           <button
             onClick={() => setMode("upload")}
             className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-sm font-semibold transition-all ${
@@ -149,7 +149,7 @@ export function AvatarEditor({ currentAvatar, name, userId, onSave, onClose }: A
         {mode === "upload" ? (
           <div
             onClick={() => fileInputRef.current?.click()}
-            className="border-2 border-dashed border-gray-300 rounded-xl p-8 text-center cursor-pointer hover:border-indigo-400 hover:bg-white/40 transition-all"
+            className="border-2 border-dashed border-gray-300 rounded-xl p-8 text-center cursor-pointer hover:border-indigo-400 hover:bg-gray-50 transition-all"
           >
             <input
               ref={fileInputRef}
@@ -178,10 +178,7 @@ export function AvatarEditor({ currentAvatar, name, userId, onSave, onClose }: A
             <button
               onClick={handleGenerate}
               disabled={generating || generateAvatar.isPending}
-              className="btn-jelly w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold text-white shadow-lg disabled:opacity-60"
-              style={{
-                background: "linear-gradient(135deg, #8b5cf6, #a78bfa)",
-              }}
+              className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 transition-colors disabled:opacity-60"
             >
               {generating || generateAvatar.isPending ? (
                 <>
@@ -200,20 +197,17 @@ export function AvatarEditor({ currentAvatar, name, userId, onSave, onClose }: A
 
         {/* Actions */}
         {preview && (
-          <div className="flex items-center gap-3 mt-5 pt-4 border-t border-white/30">
+          <div className="flex items-center gap-3 mt-5 pt-4 border-t border-gray-200">
             <button
               onClick={onClose}
-              className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-gray-600 hover:bg-white/60 transition-colors"
+              className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-gray-600 hover:bg-gray-50 transition-colors"
             >
               取消
             </button>
             <button
               onClick={handleSave}
               disabled={updateAvatar.isPending}
-              className="btn-jelly flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold text-white shadow-lg disabled:opacity-60"
-              style={{
-                background: "linear-gradient(135deg, #6366f1, #8b5cf6)",
-              }}
+              className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 transition-colors disabled:opacity-60"
             >
               {updateAvatar.isPending ? (
                 <Loader2 className="w-4 h-4 animate-spin" />

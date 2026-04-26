@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <title>Gan 项目部署工具</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+      background: #f5f7fa;
+      min-height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      padding: 20px;
+    }
+    .container {
+      background: #fff;
+      border-radius: 16px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+      max-width: 520px;
+      width: 100%;
+      padding: 32px;
+    }
+    h1 {
+      font-size: 22px;
+      color: #1a1a2e;
+      margin-bottom: 8px;
+      text-align: center;
+    }
+    .subtitle {
+      text-align: center;
+      color: #888;
+      font-size: 14px;
+      margin-bottom: 28px;
+    }
+    .btn {
+      display: block;
+      width: 100%;
+      padding: 14px 20px;
+      border: none;
+      border-radius: 10px;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      margin-bottom: 12px;
+      transition: all 0.2s;
+      text-align: center;
+    }
+    .btn:hover { transform: translateY(-1px); }
+    .btn:active { transform: translateY(0); }
+    .btn-deploy { background: #2563eb; color: #fff; }
+    .btn-deploy:hover { background: #1d4ed8; }
+    .btn-local { background: #f59e0b; color: #fff; }
+    .btn-local:hover { background: #d97706; }
+    .btn-help { background: #e5e7eb; color: #374151; }
+    .btn-help:hover { background: #d1d5db; }
+    .btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      transform: none !important;
+    }
+    .status {
+      margin-top: 20px;
+      padding: 14px 16px;
+      border-radius: 8px;
+      background: #f3f4f6;
+      font-size: 13px;
+      color: #4b5563;
+      min-height: 44px;
+      display: flex;
+      align-items: center;
+    }
+    .status.running {
+      background: #dbeafe;
+      color: #1e40af;
+    }
+    .status.success {
+      background: #d1fae5;
+      color: #065f46;
+    }
+    .status.error {
+      background: #fee2e2;
+      color: #991b1b;
+    }
+    .spinner {
+      display: inline-block;
+      width: 14px;
+      height: 14px;
+      border: 2px solid #cbd5e1;
+      border-top-color: #2563eb;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin-right: 8px;
+      vertical-align: middle;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .log {
+      margin-top: 16px;
+      padding: 12px;
+      background: #1e1e2e;
+      color: #a5b4fc;
+      border-radius: 8px;
+      font-family: "Consolas", "Monaco", monospace;
+      font-size: 12px;
+      line-height: 1.6;
+      max-height: 240px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+    .log:empty { display: none; }
+    .tip {
+      margin-top: 20px;
+      padding: 12px 14px;
+      background: #fffbeb;
+      border: 1px solid #fcd34d;
+      border-radius: 8px;
+      font-size: 13px;
+      color: #92400e;
+    }
+    .tip strong { color: #78350f; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🚀 Gan 项目部署工具</h1>
+    <p class="subtitle">服务器: 118.89.134.207</p>
+
+    <button class="btn btn-deploy" id="btnDeploy" onclick="doDeploy()">
+      一键部署到服务器
+    </button>
+    <button class="btn btn-local" id="btnLocal" onclick="doLocal()">
+      启动本地开发服务器
+    </button>
+    <button class="btn btn-help" onclick="showHelp()">
+      查看部署说明
+    </button>
+
+    <div class="status" id="status">等待操作...</div>
+    <div class="log" id="log"></div>
+
+    <div class="tip" id="helpBox" style="display:none">
+      <strong>首次部署：</strong>点击「一键部署」，首次需要输入 ubuntu 密码<br>
+      <strong>更新代码：</strong>修改后再次点击「一键部署」，无需密码<br>
+      <strong>安全组：</strong>如果打不开网页，去腾讯云控制台开放 TCP 3000 端口<br>
+      <strong>账号：</strong>admin / 密码：admin123
+    </div>
+  </div>
+
+  <script>
+    const statusEl = document.getElementById('status');
+    const logEl = document.getElementById('log');
+    const btnDeploy = document.getElementById('btnDeploy');
+    const btnLocal = document.getElementById('btnLocal');
+
+    function setStatus(text, type) {
+      statusEl.textContent = text;
+      statusEl.className = 'status ' + (type || '');
+    }
+
+    function appendLog(text) {
+      logEl.style.display = 'block';
+      logEl.textContent += text + '\n';
+      logEl.scrollTop = logEl.scrollHeight;
+    }
+
+    async function doDeploy() {
+      btnDeploy.disabled = true;
+      btnLocal.disabled = true;
+      setStatus('部署中，请稍候...', 'running');
+      logEl.textContent = '';
+      appendLog('开始部署...');
+
+      try {
+        const res = await fetch('/api/deploy');
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          const text = decoder.decode(value, { stream: true });
+          appendLog(text);
+        }
+        setStatus('部署完成！访问 http://118.89.134.207:3000', 'success');
+      } catch (err) {
+        setStatus('部署失败: ' + err.message, 'error');
+        appendLog('错误: ' + err.message);
+      } finally {
+        btnDeploy.disabled = false;
+        btnLocal.disabled = false;
+      }
+    }
+
+    async function doLocal() {
+      btnDeploy.disabled = true;
+      btnLocal.disabled = true;
+      setStatus('正在启动本地服务器...', 'running');
+      try {
+        await fetch('/api/local-dev');
+        setStatus('本地服务器已启动: http://localhost:3000', 'success');
+      } catch (err) {
+        setStatus('启动失败: ' + err.message, 'error');
+      }
+    }
+
+    function showHelp() {
+      const box = document.getElementById('helpBox');
+      box.style.display = box.style.display === 'none' ? 'block' : 'none';
+    }
+  </script>
+</body>
+</html>
