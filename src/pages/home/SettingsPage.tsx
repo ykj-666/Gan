@@ -1,24 +1,18 @@
-﻿import { useEffect, useMemo, useState, type ReactNode } from "react";
+﻿import { useEffect, useState, type ReactNode } from "react";
 import {
   BadgeCheck,
   CircleAlert,
   Database,
-  KeyRound,
   RefreshCw,
-  Save,
   Shield,
   Sparkles,
   UserRound,
 } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { useAuth } from "@/hooks/useAuth";
-import { getLocalAuthToken, getWechatAuthToken } from "@/lib/auth-storage";
 import {
-  clearKimiApiKey,
-  loadKimiApiKey,
   loadManagerWorkspaceSettings,
   resetManagerWorkspaceSettings,
-  saveKimiApiKey,
   saveManagerWorkspaceSettings,
   type ManagerWorkspaceSettings,
 } from "@/lib/app-settings";
@@ -29,29 +23,16 @@ export function SettingsPage() {
     user && "department" in user && typeof user.department === "string"
       ? user.department
       : "";
-  const [apiKey, setApiKey] = useState("");
-  const [savedApiKey, setSavedApiKey] = useState("");
   const [workspaceSettings, setWorkspaceSettings] = useState<ManagerWorkspaceSettings>({
     recognitionHighQuality: false,
   });
   const [saveState, setSaveState] = useState<"" | "saved">("");
 
   useEffect(() => {
-    const currentApiKey = loadKimiApiKey();
-    setApiKey(currentApiKey);
-    setSavedApiKey(currentApiKey);
     setWorkspaceSettings(loadManagerWorkspaceSettings());
   }, []);
 
-  const loginSource = useMemo(() => {
-    if (getWechatAuthToken()) {
-      return "企业微信登录";
-    }
-    if (getLocalAuthToken()) {
-      return "本地账号登录";
-    }
-    return "会话登录";
-  }, []);
+  const loginSource = "当前会话";
 
   const showSaved = () => {
     setSaveState("saved");
@@ -62,20 +43,6 @@ export function SettingsPage() {
     setWorkspaceSettings(nextSettings);
     saveManagerWorkspaceSettings(nextSettings);
     showSaved();
-  };
-
-  const handleSaveApiKey = () => {
-    saveKimiApiKey(apiKey);
-    const latest = loadKimiApiKey();
-    setApiKey(latest);
-    setSavedApiKey(latest);
-    showSaved();
-  };
-
-  const handleClearApiKey = () => {
-    clearKimiApiKey();
-    setApiKey("");
-    setSavedApiKey("");
   };
 
   const handleResetWorkspace = () => {
@@ -142,54 +109,6 @@ export function SettingsPage() {
               <p>1. OCR API Key 只保存在当前浏览器，用于截图识别模块。</p>
               <p>2. 工作偏好用于识别页默认策略，不影响历史记录。</p>
               <p>3. 清空本地缓存后，不会删除任务、员工、请假和出差数据。</p>
-            </div>
-          </div>
-        </section>
-
-        <section className="rounded-2xl border border-gray-200 bg-white p-5">
-          <div className="flex items-start gap-3">
-            <div className="rounded-lg bg-amber-50 p-2 text-amber-600">
-              <KeyRound className="h-5 w-5" />
-            </div>
-            <div>
-              <h2 className="text-base font-semibold text-gray-900">OCR 服务</h2>
-              <p className="mt-1 text-sm text-gray-500">
-                当前任务识别、员工导入、请假识别和出差识别统一使用这一份 API Key。
-              </p>
-            </div>
-          </div>
-
-          <div className="mt-5 grid gap-4 xl:grid-cols-[minmax(0,1fr)_280px]">
-            <div>
-              <label className="mb-1 block text-xs font-medium text-gray-500">Kimi API Key</label>
-              <input
-                type="password"
-                value={apiKey}
-                onChange={(event) => setApiKey(event.target.value)}
-                placeholder="sk-..."
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-              />
-              <p className="mt-2 text-xs text-gray-500">
-                {savedApiKey
-                  ? `当前已保存：sk-****${savedApiKey.slice(-4)}`
-                  : "当前未保存 API Key，识别类功能将无法调用 OCR。"}
-              </p>
-            </div>
-
-            <div className="flex flex-col gap-3">
-              <button
-                onClick={handleSaveApiKey}
-                className="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700"
-              >
-                <Save className="h-4 w-4" />
-                保存 API Key
-              </button>
-              <button
-                onClick={handleClearApiKey}
-                className="rounded-lg border border-gray-200 px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
-              >
-                清空 API Key
-              </button>
             </div>
           </div>
         </section>

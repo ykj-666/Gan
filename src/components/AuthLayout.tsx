@@ -56,6 +56,8 @@ export default function AuthLayout({
     return <AuthLayoutSkeleton />;
   }
 
+  const navigate = useNavigate();
+
   if (!user) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -71,7 +73,7 @@ export default function AuthLayout({
           </div>
           <Button
             onClick={() => {
-              window.location.href = LOGIN_PATH;
+              navigate(LOGIN_PATH);
             }}
             size="lg"
             className="w-full shadow-lg hover:shadow-xl transition-all"

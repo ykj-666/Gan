@@ -21,6 +21,7 @@ const requireAuth = t.middleware(async ({ ctx, next }) => {
   return next({
     ctx: {
       user: ctx.user,
+      req: ctx.req,
     },
   });
 });
@@ -37,6 +38,7 @@ function requireRole(role: string) {
     return next({
       ctx: {
         user: ctx.user,
+        req: ctx.req,
       },
     });
   });

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Loader2, MessageCircle, QrCode, Smartphone, X } from "lucide-react";
 import { trpc } from "@/providers/trpc";
-import { setWechatAuthToken } from "@/lib/auth-storage";
+import { useNavigate } from "react-router";
 
 type WechatLoginProps = {
   isOpen: boolean;
@@ -9,6 +9,7 @@ type WechatLoginProps = {
 };
 
 export function WechatLogin({ isOpen, onClose }: WechatLoginProps) {
+  const navigate = useNavigate();
   const [status, setStatus] = useState<"loading" | "qr" | "polling" | "success" | "error">(
     "loading",
   );
@@ -20,11 +21,10 @@ export function WechatLogin({ isOpen, onClose }: WechatLoginProps) {
   });
 
   const mockLogin = trpc.wechatAuth.mockLogin.useMutation({
-    onSuccess: (data) => {
-      setWechatAuthToken(data.token);
+    onSuccess: () => {
       setStatus("success");
       setTimeout(() => {
-        window.location.href = "/";
+        navigate("/", { replace: true });
       }, 800);
     },
     onError: (mutationError) => {

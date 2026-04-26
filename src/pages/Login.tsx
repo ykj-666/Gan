@@ -1,18 +1,18 @@
 import { useState } from "react";
 import { Briefcase, Eye, EyeOff, LogIn } from "lucide-react";
 import { trpc } from "@/providers/trpc";
-import { setLocalAuthToken } from "@/lib/auth-storage";
+import { useNavigate } from "react-router";
 
 export default function Login() {
+  const navigate = useNavigate();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
 
   const loginMutation = trpc.localAuth.login.useMutation({
-    onSuccess: (data) => {
-      setLocalAuthToken(data.token);
-      window.location.href = "/";
+    onSuccess: () => {
+      navigate("/", { replace: true });
     },
     onError: (mutationError) => {
       setError(mutationError.message);

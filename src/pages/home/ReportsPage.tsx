@@ -45,15 +45,19 @@ export function ReportsPage() {
 
   const taskMemberMap = useMemo(() => new Map(members.map((member) => [member.id, member])), [members]);
 
-  const filteredTaskRows = tasks.filter((task) => {
-    if (department === "all") return true;
-    const member = task.assigneeId ? taskMemberMap.get(task.assigneeId) : undefined;
-    return member?.department === department;
-  });
+  const filteredTaskRows = useMemo(() => {
+    return tasks.filter((task) => {
+      if (department === "all") return true;
+      const member = task.assigneeId ? taskMemberMap.get(task.assigneeId) : undefined;
+      return member?.department === department;
+    });
+  }, [tasks, department, taskMemberMap]);
 
-  const filteredLeaveRows = leaveRecords.filter((leave) => {
-    return department === "all" || leave.userDepartment === department;
-  });
+  const filteredLeaveRows = useMemo(() => {
+    return leaveRecords.filter((leave) => {
+      return department === "all" || leave.userDepartment === department;
+    });
+  }, [leaveRecords, department]);
 
   const exportLeaveCsv = () => {
     downloadCsv(

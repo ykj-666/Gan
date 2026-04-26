@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, like, or } from "drizzle-orm";
+import { and, desc, eq, gte, isNull, like, or } from "drizzle-orm";
 import { z } from "zod";
 import { activities, users } from "@db/schema";
 import { createRouter, adminQuery } from "../middleware";
@@ -6,7 +6,7 @@ import { getDb } from "../queries/connection";
 
 const groupTypeMap = {
   all: [],
-  task: ["task_created", "task_updated", "task_assigned", "task_completed", "status_changed"],
+  task: ["task_created", "task_updated", "task_assigned", "task_deleted", "status_changed"],
   user: ["user_created", "user_updated", "user_deleted", "user_imported"],
   leave: ["leave_created", "leave_deleted", "leave_status_changed"],
   trip: ["trip_created", "trip_updated", "trip_deleted", "trip_imported"],
@@ -28,7 +28,7 @@ export const activityRouter = createRouter({
       const db = getDb();
       const limit = input?.limit ?? 20;
       const typeGroup = input?.typeGroup ?? "all";
-      const conditions = [];
+      const conditions = [isNull(activities.deletedAt), isNull(users.deletedAt)];
 
       if (typeGroup !== "all") {
         const matchedTypes = groupTypeMap[typeGroup];
@@ -62,10 +62,10 @@ export const activityRouter = createRouter({
         .from(activities)
         .leftJoin(users, eq(users.id, activities.userId));
 
-      if (conditions.length > 0) {
+      if (conditions.length > 2) {
         return query.where(and(...conditions)).orderBy(desc(activities.createdAt)).limit(limit);
       }
 
-      return query.orderBy(desc(activities.createdAt)).limit(limit);
+      return query.where(and(...conditions)).orderBy(desc(activities.createdAt)).limit(limit);
     }),
 });

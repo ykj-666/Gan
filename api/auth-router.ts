@@ -2,6 +2,16 @@ import * as cookie from "cookie";
 import { Session } from "@contracts/constants";
 import { getSessionCookieOptions } from "./lib/cookies";
 import { createRouter, authedQuery } from "./middleware";
+import { serializeCookie } from "./lib/cookie";
+import { env } from "./lib/env";
+
+const clearCookieOpts = {
+  httpOnly: true,
+  secure: env.isProduction,
+  sameSite: "Strict" as const,
+  path: "/",
+  maxAge: 0,
+};
 
 export const authRouter = createRouter({
   me: authedQuery.query((opts) => opts.ctx.user),
@@ -17,6 +27,9 @@ export const authRouter = createRouter({
         maxAge: 0,
       }),
     );
+    // Also clear local and WeChat auth cookies
+    ctx.resHeaders.append("Set-Cookie", serializeCookie("local_auth_token", "", clearCookieOpts));
+    ctx.resHeaders.append("Set-Cookie", serializeCookie("wechat_auth_token", "", clearCookieOpts));
     return { success: true };
   }),
 });

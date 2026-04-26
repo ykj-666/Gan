@@ -1,8 +1,7 @@
 import { trpc } from "@/providers/trpc";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router";
 import { LOGIN_PATH } from "@/const";
-import { clearAuthTokens, getLocalAuthToken, getWechatAuthToken } from "@/lib/auth-storage";
 
 type UseAuthOptions = {
   redirectOnUnauthenticated?: boolean;
@@ -16,15 +15,7 @@ export function useAuth(options?: UseAuthOptions) {
   const navigate = useNavigate();
   const utils = trpc.useUtils();
 
-  // Check auth tokens
-  const [localToken] = useState<string | null>(() =>
-    getLocalAuthToken()
-  );
-  const [wechatToken] = useState<string | null>(() =>
-    getWechatAuthToken()
-  );
-
-  // Query all three auth systems
+  // Query all three auth systems in parallel
   const { data: oauthUser, isLoading: oauthLoading } =
     trpc.auth.me.useQuery(undefined, {
       staleTime: 1000 * 60 * 5,
@@ -35,14 +26,12 @@ export function useAuth(options?: UseAuthOptions) {
     trpc.localAuth.me.useQuery(undefined, {
       staleTime: 1000 * 60 * 5,
       retry: false,
-      enabled: !!localToken && !oauthUser,
     });
 
   const { data: wechatUser, isLoading: wechatLoading } =
     trpc.wechatAuth.me.useQuery(undefined, {
       staleTime: 1000 * 60 * 5,
       retry: false,
-      enabled: !!wechatToken && !oauthUser && !localUser,
     });
 
   const logoutMutation = trpc.auth.logout.useMutation({
@@ -57,14 +46,12 @@ export function useAuth(options?: UseAuthOptions) {
   const user = oauthUser ?? localUser ?? wechatUser ?? null;
 
   const logout = useCallback(() => {
-    // Clear all auth systems
-    clearAuthTokens();
     logoutMutation.mutate(undefined, {
       onSettled: () => {
-        window.location.href = redirectPath;
+        navigate(redirectPath, { replace: true });
       },
     });
-  }, [logoutMutation, redirectPath]);
+  }, [logoutMutation, redirectPath, navigate]);
 
   useEffect(() => {
     if (redirectOnUnauthenticated && !isLoading && !user) {

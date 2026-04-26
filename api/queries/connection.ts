@@ -13,6 +13,7 @@ export function getDb() {
     const dbPath = path.join(process.cwd(), "local.db");
     const client = createClient({ url: `file:${dbPath}` });
     instance = drizzle(client, { schema: fullSchema });
+    client.execute("PRAGMA foreign_keys = ON");
   }
   return instance;
 }

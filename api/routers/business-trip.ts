@@ -1,6 +1,6 @@
-﻿import { z } from "zod";
+import { z } from "zod";
 import { TRPCError } from "@trpc/server";
-import { type SQL, and, asc, desc, eq, sql } from "drizzle-orm";
+import { type SQL, and, asc, desc, eq, isNull, sql } from "drizzle-orm";
 import { businessTrips, users } from "@db/schema";
 import { createRouter, adminQuery } from "../middleware";
 import { getDb } from "../queries/connection";
@@ -16,18 +16,18 @@ const businessTripInputSchema = z.object({
   employeeName: z.string().min(1).optional(),
   department: z.string().optional(),
   projectCode: z.string().min(1),
-  cycleStart: z.string().min(1),
-  cycleEnd: z.string().min(1),
-  dispatchStart: z.string().min(1),
-  dispatchEnd: z.string().min(1),
+  cycleStart: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "日期格式必须为 YYYY-MM-DD"),
+  cycleEnd: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "日期格式必须为 YYYY-MM-DD"),
+  dispatchStart: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "日期格式必须为 YYYY-MM-DD"),
+  dispatchEnd: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "日期格式必须为 YYYY-MM-DD"),
   location: z.string().min(1),
-  workDays: z.number().int().nonnegative(),
-  officeDays: z.number().int().nonnegative(),
-  tripDays: z.number().int().nonnegative(),
-  tempDays: z.number().int().nonnegative(),
-  absenceReason: z.string().optional(),
-  subsidyDays: z.number().int().nonnegative(),
-  remark: z.string().optional(),
+  workDays: z.number().int().nonnegative().max(366),
+  officeDays: z.number().int().nonnegative().max(366),
+  tripDays: z.number().int().nonnegative().max(366),
+  tempDays: z.number().int().nonnegative().max(366),
+  absenceReason: z.string().max(2000).optional(),
+  subsidyDays: z.number().int().nonnegative().max(366),
+  remark: z.string().max(5000).optional(),
 });
 
 type BusinessTripInput = z.infer<typeof businessTripInputSchema>;
@@ -101,7 +101,7 @@ async function normalizeBusinessTripInput(input: BusinessTripInput) {
   const matchedUser = await db
     .select({ id: users.id, name: users.name, department: users.department })
     .from(users)
-    .where(eq(users.id, input.userId))
+    .where(and(eq(users.id, input.userId), isNull(users.deletedAt)))
     .limit(1);
 
   if (!matchedUser[0]) {
@@ -180,7 +180,7 @@ function buildConditions(input?: {
   search?: string;
   userId?: number;
 }) {
-  const conditions: SQL[] = [];
+  const conditions: SQL[] = [isNull(businessTrips.deletedAt)];
 
   if (input?.cycleMonth) {
     const cycle = getCycleRangeFromMonth(input.cycleMonth);
@@ -223,7 +223,7 @@ async function selectTripRows(input?: {
     .from(businessTrips)
     .leftJoin(users, eq(users.id, businessTrips.userId));
 
-  if (conditions.length > 0) {
+  if (conditions.length > 1) {
     return (await query
       .where(and(...conditions))
       .orderBy(
@@ -422,6 +422,7 @@ export const businessTripRouter = createRouter({
     const rows = await db
       .select({ department: businessTrips.department })
       .from(businessTrips)
+      .where(isNull(businessTrips.deletedAt))
       .groupBy(businessTrips.department)
       .orderBy(asc(businessTrips.department));
     return rows.map((row) => row.department).filter(Boolean);
@@ -432,65 +433,83 @@ export const businessTripRouter = createRouter({
     .mutation(async ({ input, ctx }) => {
       const db = getDb();
       const normalized = await normalizeBusinessTripInput(input);
-      const now = Math.floor(Date.now() / 1000);
 
-      const result = await db.run(sql`
-        INSERT INTO business_trip (
-          user_id, employee_name, department, project_code, cycle_start, cycle_end,
-          dispatch_start, dispatch_end, location, work_days, actual_days,
-          office_days, trip_days, temp_days, absence_days, absence_reason,
-          subsidy_days, remark, created_at, updated_at
-        ) VALUES (
-          ${normalized.userId}, ${normalized.employeeName}, ${normalized.department}, ${normalized.projectCode},
-          ${normalized.cycleStart}, ${normalized.cycleEnd}, ${normalized.dispatchStart},
-          ${normalized.dispatchEnd}, ${normalized.location}, ${normalized.workDays},
-          ${normalized.actualDays}, ${normalized.officeDays}, ${normalized.tripDays},
-          ${normalized.tempDays}, ${normalized.absenceDays}, ${normalized.absenceReason},
-          ${normalized.subsidyDays}, ${normalized.remark}, ${now}, ${now}
-        )
-      `);
+      const result = await db.transaction(async (tx) => {
+        const insertResult = await tx.insert(businessTrips).values({
+          userId: normalized.userId,
+          employeeName: normalized.employeeName,
+          department: normalized.department,
+          projectCode: normalized.projectCode,
+          cycleStart: normalized.cycleStart,
+          cycleEnd: normalized.cycleEnd,
+          dispatchStart: normalized.dispatchStart,
+          dispatchEnd: normalized.dispatchEnd,
+          location: normalized.location,
+          workDays: normalized.workDays,
+          actualDays: normalized.actualDays,
+          officeDays: normalized.officeDays,
+          tripDays: normalized.tripDays,
+          tempDays: normalized.tempDays,
+          absenceDays: normalized.absenceDays,
+          absenceReason: normalized.absenceReason,
+          subsidyDays: normalized.subsidyDays,
+          remark: normalized.remark,
+        });
 
-      await createActivity(db, {
-        type: "trip_created",
-        description: `新增了员工「${normalized.employeeName}」的出差考勤记录`,
-        userId: ctx.user.id,
+        await createActivity(tx, {
+          type: "trip_created",
+          description: `新增了员工「${normalized.employeeName}」的出差考勤记录`,
+          userId: ctx.user.id,
+          req: ctx.req,
+        });
+
+        return Number(insertResult.lastInsertRowid);
       });
 
-      return { id: Number(result.lastInsertRowid), ...normalized };
+      return { id: result, ...normalized };
     }),
 
   batchCreate: adminQuery
     .input(z.array(businessTripInputSchema).min(1))
     .mutation(async ({ input, ctx }) => {
       const db = getDb();
-      const inserted = [];
 
-      for (const item of input) {
-        const normalized = await normalizeBusinessTripInput(item);
-        const now = Math.floor(Date.now() / 1000);
-        const result = await db.run(sql`
-          INSERT INTO business_trip (
-            user_id, employee_name, department, project_code, cycle_start, cycle_end,
-            dispatch_start, dispatch_end, location, work_days, actual_days,
-            office_days, trip_days, temp_days, absence_days, absence_reason,
-            subsidy_days, remark, created_at, updated_at
-          ) VALUES (
-            ${normalized.userId}, ${normalized.employeeName}, ${normalized.department}, ${normalized.projectCode},
-            ${normalized.cycleStart}, ${normalized.cycleEnd}, ${normalized.dispatchStart},
-            ${normalized.dispatchEnd}, ${normalized.location}, ${normalized.workDays},
-            ${normalized.actualDays}, ${normalized.officeDays}, ${normalized.tripDays},
-            ${normalized.tempDays}, ${normalized.absenceDays}, ${normalized.absenceReason},
-            ${normalized.subsidyDays}, ${normalized.remark}, ${now}, ${now}
-          )
-        `);
+      const inserted = await db.transaction(async (tx) => {
+        const records = [];
+        for (const item of input) {
+          const normalized = await normalizeBusinessTripInput(item);
+          const result = await tx.insert(businessTrips).values({
+            userId: normalized.userId,
+            employeeName: normalized.employeeName,
+            department: normalized.department,
+            projectCode: normalized.projectCode,
+            cycleStart: normalized.cycleStart,
+            cycleEnd: normalized.cycleEnd,
+            dispatchStart: normalized.dispatchStart,
+            dispatchEnd: normalized.dispatchEnd,
+            location: normalized.location,
+            workDays: normalized.workDays,
+            actualDays: normalized.actualDays,
+            officeDays: normalized.officeDays,
+            tripDays: normalized.tripDays,
+            tempDays: normalized.tempDays,
+            absenceDays: normalized.absenceDays,
+            absenceReason: normalized.absenceReason,
+            subsidyDays: normalized.subsidyDays,
+            remark: normalized.remark,
+          });
 
-        inserted.push({ id: Number(result.lastInsertRowid), ...normalized });
-      }
+          records.push({ id: Number(result.lastInsertRowid), ...normalized });
+        }
 
-      await createActivity(db, {
-        type: "trip_imported",
-        description: `批量导入了 ${inserted.length} 条出差考勤记录`,
-        userId: ctx.user.id,
+        await createActivity(tx, {
+          type: "trip_imported",
+          description: `批量导入了 ${records.length} 条出差考勤记录`,
+          userId: ctx.user.id,
+          req: ctx.req,
+        });
+
+        return records;
       });
 
       return { count: inserted.length, records: inserted };
@@ -502,36 +521,38 @@ export const businessTripRouter = createRouter({
       const db = getDb();
       const { id, ...rest } = input;
       const normalized = await normalizeBusinessTripInput(rest);
-      const now = Math.floor(Date.now() / 1000);
 
-      await db.run(sql`
-        UPDATE business_trip
-        SET user_id = ${normalized.userId},
-            employee_name = ${normalized.employeeName},
-            department = ${normalized.department},
-            project_code = ${normalized.projectCode},
-            cycle_start = ${normalized.cycleStart},
-            cycle_end = ${normalized.cycleEnd},
-            dispatch_start = ${normalized.dispatchStart},
-            dispatch_end = ${normalized.dispatchEnd},
-            location = ${normalized.location},
-            work_days = ${normalized.workDays},
-            actual_days = ${normalized.actualDays},
-            office_days = ${normalized.officeDays},
-            trip_days = ${normalized.tripDays},
-            temp_days = ${normalized.tempDays},
-            absence_days = ${normalized.absenceDays},
-            absence_reason = ${normalized.absenceReason},
-            subsidy_days = ${normalized.subsidyDays},
-            remark = ${normalized.remark},
-            updated_at = ${now}
-        WHERE id = ${id}
-      `);
+      await db.transaction(async (tx) => {
+        await tx
+          .update(businessTrips)
+          .set({
+            userId: normalized.userId,
+            employeeName: normalized.employeeName,
+            department: normalized.department,
+            projectCode: normalized.projectCode,
+            cycleStart: normalized.cycleStart,
+            cycleEnd: normalized.cycleEnd,
+            dispatchStart: normalized.dispatchStart,
+            dispatchEnd: normalized.dispatchEnd,
+            location: normalized.location,
+            workDays: normalized.workDays,
+            actualDays: normalized.actualDays,
+            officeDays: normalized.officeDays,
+            tripDays: normalized.tripDays,
+            tempDays: normalized.tempDays,
+            absenceDays: normalized.absenceDays,
+            absenceReason: normalized.absenceReason,
+            subsidyDays: normalized.subsidyDays,
+            remark: normalized.remark,
+          })
+          .where(eq(businessTrips.id, id));
 
-      await createActivity(db, {
-        type: "trip_updated",
-        description: `更新了员工「${normalized.employeeName}」的出差考勤记录`,
-        userId: ctx.user.id,
+        await createActivity(tx, {
+          type: "trip_updated",
+          description: `更新了员工「${normalized.employeeName}」的出差考勤记录`,
+          userId: ctx.user.id,
+          req: ctx.req,
+        });
       });
 
       return { id, ...normalized };
@@ -541,20 +562,32 @@ export const businessTripRouter = createRouter({
     .input(z.object({ id: z.number() }))
     .mutation(async ({ input, ctx }) => {
       const db = getDb();
-      const existing = await db
-        .select({
-          employeeName: businessTrips.employeeName,
-          projectCode: businessTrips.projectCode,
-        })
-        .from(businessTrips)
-        .where(eq(businessTrips.id, input.id))
-        .limit(1);
-      await db.delete(businessTrips).where(eq(businessTrips.id, input.id));
 
-      await createActivity(db, {
-        type: "trip_deleted",
-        description: `删除了员工「${existing[0]?.employeeName ?? input.id}」的出差记录（${existing[0]?.projectCode ?? "-" }）`,
-        userId: ctx.user.id,
+      await db.transaction(async (tx) => {
+        const existing = await tx
+          .select({
+            employeeName: businessTrips.employeeName,
+            projectCode: businessTrips.projectCode,
+          })
+          .from(businessTrips)
+          .where(and(eq(businessTrips.id, input.id), isNull(businessTrips.deletedAt)))
+          .limit(1);
+
+        if (!existing[0]) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "出差记录不存在" });
+        }
+
+        await tx
+          .update(businessTrips)
+          .set({ deletedAt: new Date() })
+          .where(eq(businessTrips.id, input.id));
+
+        await createActivity(tx, {
+          type: "trip_deleted",
+          description: `删除了员工「${existing[0]?.employeeName ?? input.id}」的出差记录（${existing[0]?.projectCode ?? "-" }）`,
+          userId: ctx.user.id,
+          req: ctx.req,
+        });
       });
 
       return { success: true };

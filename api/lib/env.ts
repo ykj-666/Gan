@@ -7,5 +7,6 @@ export const env = {
   databaseUrl: process.env.DATABASE_URL || "file:local.db",
   kimiAuthUrl: process.env.KIMI_AUTH_URL ?? "",
   kimiOpenUrl: process.env.KIMI_OPEN_URL ?? "",
+  kimiApiKey: process.env.KIMI_API_KEY ?? "",
   ownerUnionId: process.env.OWNER_UNION_ID ?? "",
 };

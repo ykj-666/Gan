@@ -4,7 +4,6 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import superjson from "superjson";
 import type { AppRouter } from "../../api/router";
 import type { ReactNode } from "react";
-import { getLocalAuthToken, getWechatAuthToken } from "@/lib/auth-storage";
 
 export const trpc = createTRPCReact<AppRouter>();
 
@@ -14,18 +13,6 @@ const trpcClient = trpc.createClient({
     httpBatchLink({
       url: "/api/trpc",
       transformer: superjson,
-      headers() {
-        const headers: Record<string, string> = {};
-        const localToken = getLocalAuthToken();
-        const wechatToken = getWechatAuthToken();
-        if (localToken) {
-          headers["x-local-auth-token"] = localToken;
-        }
-        if (wechatToken) {
-          headers["x-wechat-auth-token"] = wechatToken;
-        }
-        return headers;
-      },
       fetch(input, init) {
         return globalThis.fetch(input, {
           ...(init ?? {}),

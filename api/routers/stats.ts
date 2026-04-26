@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { isNull } from "drizzle-orm";
 import { attendances, businessTrips, tasks, users } from "@db/schema";
 import { getCycleRangeFromMonth } from "@contracts/business-trip";
 import { createRouter, adminQuery } from "../middleware";
@@ -82,10 +83,10 @@ export const statsRouter = createRouter({
     const db = getDb();
 
     const [allTasks, allUsers, allAttendances, allTrips] = await Promise.all([
-      db.select().from(tasks),
-      db.select().from(users),
-      db.select().from(attendances),
-      db.select().from(businessTrips),
+      db.select().from(tasks).where(isNull(tasks.deletedAt)),
+      db.select().from(users).where(isNull(users.deletedAt)),
+      db.select().from(attendances).where(isNull(attendances.deletedAt)),
+      db.select().from(businessTrips).where(isNull(businessTrips.deletedAt)),
     ]);
 
     const userMap = new Map(allUsers.map((user) => [user.id, user]));
@@ -291,10 +292,10 @@ export const statsRouter = createRouter({
     .query(async ({ input }) => {
       const db = getDb();
       const [allUsers, allTasks, allLeaves, allTrips] = await Promise.all([
-        db.select().from(users),
-        db.select().from(tasks),
-        db.select().from(attendances),
-        db.select().from(businessTrips),
+        db.select().from(users).where(isNull(users.deletedAt)),
+        db.select().from(tasks).where(isNull(tasks.deletedAt)),
+        db.select().from(attendances).where(isNull(attendances.deletedAt)),
+        db.select().from(businessTrips).where(isNull(businessTrips.deletedAt)),
       ]);
 
       const today = toDateOnly(new Date());

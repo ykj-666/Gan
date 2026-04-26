@@ -6,6 +6,7 @@ import { verifyWechatToken } from "./routers/wechatAuth";
 import { getDb } from "./queries/connection";
 import { users } from "@db/schema";
 import { eq } from "drizzle-orm";
+import { getCookieValue } from "./lib/cookie";
 
 export type TrpcContext = {
   req: Request;
@@ -28,7 +29,7 @@ export async function createContext(
   // Try local auth if OAuth failed
   if (!ctx.user) {
     try {
-      const token = opts.req.headers.get("x-local-auth-token");
+      const token = getCookieValue(opts.req, "local_auth_token");
       if (token) {
         const claim = await verifyLocalToken(token);
         if (claim) {
@@ -51,7 +52,7 @@ export async function createContext(
   // Try WeChat auth if others failed
   if (!ctx.user) {
     try {
-      const token = opts.req.headers.get("x-wechat-auth-token");
+      const token = getCookieValue(opts.req, "wechat_auth_token");
       if (token) {
         const claim = await verifyWechatToken(token);
         if (claim) {

@@ -6,6 +6,7 @@ import { eq } from "drizzle-orm";
 import * as jose from "jose";
 import { env } from "../lib/env";
 import { TRPCError } from "@trpc/server";
+import { getCookieValue, serializeCookie } from "../lib/cookie";
 
 const JWT_ALG = "HS256";
 const JWT_SECRET = () => new TextEncoder().encode(env.appSecret + "_wechat");
@@ -14,7 +15,7 @@ async function signWechatToken(payload: { unionId: string; openid: string }) {
   return new jose.SignJWT(payload as unknown as jose.JWTPayload)
     .setProtectedHeader({ alg: JWT_ALG })
     .setIssuedAt()
-    .setExpirationTime("30d")
+    .setExpirationTime("7d")
     .sign(JWT_SECRET());
 }
 
@@ -28,6 +29,25 @@ export async function verifyWechatToken(token: string) {
   } catch {
     return null;
   }
+}
+
+const COOKIE_OPTIONS = {
+  httpOnly: true,
+  secure: false,
+  sameSite: "Lax" as const,
+  path: "/",
+  maxAge: 7 * 24 * 60 * 60,
+};
+
+function setAuthCookie(resHeaders: Headers, token: string) {
+  resHeaders.append("Set-Cookie", serializeCookie("wechat_auth_token", token, COOKIE_OPTIONS));
+}
+
+function clearAuthCookie(resHeaders: Headers) {
+  resHeaders.append(
+    "Set-Cookie",
+    serializeCookie("wechat_auth_token", "", { ...COOKIE_OPTIONS, maxAge: 0 }),
+  );
 }
 
 // WeChat config from env
@@ -66,7 +86,7 @@ export const wechatAuthRouter = createRouter({
         avatar: z.string().optional(),
       })
     )
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
       const db = getDb();
       const mockOpenid = `mock_wechat_${Date.now()}`;
       const unionId = `wechat_${mockOpenid}`;
@@ -101,9 +121,9 @@ export const wechatAuthRouter = createRouter({
       }
 
       const token = await signWechatToken({ unionId, openid: mockOpenid });
+      setAuthCookie(ctx.resHeaders, token);
 
       return {
-        token,
         user: {
           id: userId,
           name: input.nickname || `微信用户${Date.now().toString().slice(-6)}`,
@@ -116,7 +136,7 @@ export const wechatAuthRouter = createRouter({
   // Exchange code for token (called by frontend after WeChat callback)
   exchangeCode: publicQuery
     .input(z.object({ code: z.string() }))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
       const config = getWechatConfig();
 
       if (!config.enabled) {
@@ -210,9 +230,9 @@ export const wechatAuthRouter = createRouter({
         unionId,
         openid: userData.openid!,
       });
+      setAuthCookie(ctx.resHeaders, token);
 
       return {
-        token,
         user: {
           id: userId,
           name: userData.nickname || "微信用户",
@@ -224,7 +244,7 @@ export const wechatAuthRouter = createRouter({
 
   // Verify token and return user (used by frontend to check auth state)
   me: publicQuery.query(async ({ ctx }) => {
-    const token = ctx.req.headers.get("x-wechat-auth-token");
+    const token = getCookieValue(ctx.req, "wechat_auth_token");
     if (!token) return null;
 
     const claim = await verifyWechatToken(token);
@@ -249,5 +269,10 @@ export const wechatAuthRouter = createRouter({
       role: user.role,
       createdAt: user.createdAt,
     };
+  }),
+
+  logout: publicQuery.mutation(async ({ ctx }) => {
+    clearAuthCookie(ctx.resHeaders);
+    return { success: true };
   }),
 });

@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx tsc *)",
+      "Bash(node -c deploy-lib.cjs)",
+      "Bash(node -c deploy.cjs)",
+      "Bash(node -c deploy-server.cjs)",
+      "Bash(node deploy.cjs)",
+      "Bash(node -e \"process.exit\\(process.version.slice\\(1\\).split\\('.'\\)[0] < 20 ? 1 : 0\\)\")",
+      "Bash(cmd.exe /c \"call \\\\\"F:\\\\\\\\ding\\\\\\\\Gan\\\\\\\\点击部署.bat\\\\\"\")",
+      "Bash(cmd.exe /c \"\\\\\"F:\\\\\\\\ding\\\\\\\\Gan\\\\\\\\点击部署.bat\\\\\"\")",
+      "Bash(cmd.exe /c \"node F:\\\\\\\\ding\\\\\\\\Gan\\\\\\\\deploy.cjs\")",
+      "Bash(cmd.exe /c \"chcp 65001>nul && cd /d F:\\\\\\\\ding\\\\\\\\Gan && node --version && node deploy.cjs < NUL\")",
+      "Bash(cmd.exe /c \"chcp 65001>nul && cd /d F:\\\\\\\\ding\\\\\\\\Gan && node -e \\\\\"console.log\\('HELLO_FROM_NODE'\\)\\\\\"\")",
+      "Bash(node -e \"require\\('./deploy-lib.cjs'\\); console.log\\('DEPLOY_LIB_LOADED'\\)\")",
+      "Bash(cmd.exe /c \"call \\\\\"F:\\\\\\\\ding\\\\\\\\Gan\\\\\\\\点击部署.bat\\\\\" > F:\\\\\\\\ding\\\\\\\\Gan\\\\\\\\.claude\\\\\\\\bat-run.log 2>&1\")",
+      "Bash(xxd -g 1 -l 16 \"点击部署.bat\")"
+    ]
+  }
+}

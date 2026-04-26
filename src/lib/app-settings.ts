@@ -1,4 +1,3 @@
-export const KIMI_API_KEY_STORAGE_KEY = "kimi_api_key";
 export const MANAGER_SETTINGS_STORAGE_KEY = "manager_workspace_settings";
 
 export type ManagerWorkspaceSettings = {
@@ -31,18 +30,6 @@ function safeRemoveItem(key: string) {
   } catch {
     // Ignore storage errors in private mode or restricted environments.
   }
-}
-
-export function loadKimiApiKey() {
-  return safeGetItem(KIMI_API_KEY_STORAGE_KEY) ?? "";
-}
-
-export function saveKimiApiKey(apiKey: string) {
-  safeSetItem(KIMI_API_KEY_STORAGE_KEY, apiKey.trim());
-}
-
-export function clearKimiApiKey() {
-  safeRemoveItem(KIMI_API_KEY_STORAGE_KEY);
 }
 
 export function loadManagerWorkspaceSettings(): ManagerWorkspaceSettings {

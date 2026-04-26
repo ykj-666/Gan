@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull } from "drizzle-orm";
 import { z } from "zod";
 import { tasks, users } from "@db/schema";
 import { createActivity } from "../lib/activity";
@@ -23,8 +23,8 @@ const taskInputSchema = z.object({
   priority: z.enum(["low", "medium", "high", "urgent"]).default("medium"),
   plannedStartDate: z.string().optional(),
   plannedEndDate: z.string().optional(),
-  estimatedHours: z.number().optional(),
-  remark: z.string().optional(),
+  estimatedHours: z.number().min(0).max(9999).optional(),
+  remark: z.string().max(5000).optional(),
 });
 
 type TaskListRow = Awaited<ReturnType<typeof selectTaskRows>>[number];
@@ -36,16 +36,16 @@ async function selectTaskRows(input?: {
   search?: string;
 }) {
   const db = getDb();
-  const conditions = [];
+  const conditions = [isNull(tasks.deletedAt)];
 
   if (input?.status) conditions.push(eq(tasks.status, input.status));
   if (input?.priority) conditions.push(eq(tasks.priority, input.priority));
   if (input?.assigneeId) conditions.push(eq(tasks.assigneeId, input.assigneeId));
 
   const rawTasks =
-    conditions.length > 0
+    conditions.length > 1
       ? await db.select().from(tasks).where(and(...conditions)).orderBy(desc(tasks.createdAt))
-      : await db.select().from(tasks).orderBy(desc(tasks.createdAt));
+      : await db.select().from(tasks).where(conditions[0]).orderBy(desc(tasks.createdAt));
 
   const relatedUserIds = Array.from(
     new Set(
@@ -63,7 +63,7 @@ async function selectTaskRows(input?: {
             name: users.name,
           })
           .from(users)
-          .where(inArray(users.id, relatedUserIds))
+          .where(and(inArray(users.id, relatedUserIds), isNull(users.deletedAt)))
       : [];
 
   const userNameById = new Map(relatedUsers.map((user) => [user.id, user.name?.trim() || null]));
@@ -114,32 +114,38 @@ export const taskRouter = createRouter({
   create: adminQuery.input(taskInputSchema).mutation(async ({ input, ctx }) => {
     const db = getDb();
     const userId = ctx.user.id;
-    const result = await db.insert(tasks).values({
-      projectName: input.projectName.trim(),
-      projectCode: input.projectCode?.trim() || null,
-      projectType: input.projectType?.trim() || null,
-      specialty: input.specialty?.trim() || null,
-      projectManagerId: input.projectManagerId,
-      assigneeId: input.assigneeId,
-      status: input.status,
-      priority: input.priority,
-      plannedStartDate: input.plannedStartDate || null,
-      plannedEndDate: input.plannedEndDate || null,
-      estimatedHours: input.estimatedHours,
-      remark: input.remark?.trim() || null,
-      creatorId: userId,
+
+    const result = await db.transaction(async (tx) => {
+      const insertResult = await tx.insert(tasks).values({
+        projectName: input.projectName.trim(),
+        projectCode: input.projectCode?.trim() || null,
+        projectType: input.projectType?.trim() || null,
+        specialty: input.specialty?.trim() || null,
+        projectManagerId: input.projectManagerId,
+        assigneeId: input.assigneeId,
+        status: input.status,
+        priority: input.priority,
+        plannedStartDate: input.plannedStartDate || null,
+        plannedEndDate: input.plannedEndDate || null,
+        estimatedHours: input.estimatedHours,
+        remark: input.remark?.trim() || null,
+        creatorId: userId,
+      });
+
+      const taskId = Number(insertResult.lastInsertRowid);
+
+      await createActivity(tx, {
+        type: "task_created",
+        description: `创建了任务「${input.projectName.trim()}」`,
+        userId,
+        taskId,
+        req: ctx.req,
+      });
+
+      return taskId;
     });
 
-    const taskId = Number(result.lastInsertRowid);
-
-    await createActivity(db, {
-      type: "task_created",
-      description: `创建了任务「${input.projectName.trim()}」`,
-      userId,
-      taskId,
-    });
-
-    return { id: taskId, ...input };
+    return { id: result, ...input };
   }),
 
   update: adminQuery
@@ -149,42 +155,50 @@ export const taskRouter = createRouter({
       const userId = ctx.user.id;
       const { id, ...data } = input;
 
-      const existing = await db.select().from(tasks).where(eq(tasks.id, id)).limit(1);
-      if (!existing[0]) {
-        throw new Error("Task not found");
-      }
+      await db.transaction(async (tx) => {
+        const existing = await tx
+          .select()
+          .from(tasks)
+          .where(and(eq(tasks.id, id), isNull(tasks.deletedAt)))
+          .limit(1);
+        if (!existing[0]) {
+          throw new Error("Task not found");
+        }
 
-      const updateData: Record<string, unknown> = {};
-      if (data.projectName !== undefined) updateData.projectName = data.projectName.trim();
-      if (data.projectCode !== undefined) updateData.projectCode = data.projectCode?.trim() || null;
-      if (data.projectType !== undefined) updateData.projectType = data.projectType?.trim() || null;
-      if (data.specialty !== undefined) updateData.specialty = data.specialty?.trim() || null;
-      if (data.projectManagerId !== undefined) updateData.projectManagerId = data.projectManagerId;
-      if (data.assigneeId !== undefined) updateData.assigneeId = data.assigneeId;
-      if (data.status !== undefined) updateData.status = data.status;
-      if (data.priority !== undefined) updateData.priority = data.priority;
-      if (data.plannedStartDate !== undefined) updateData.plannedStartDate = data.plannedStartDate || null;
-      if (data.plannedEndDate !== undefined) updateData.plannedEndDate = data.plannedEndDate || null;
-      if (data.estimatedHours !== undefined) updateData.estimatedHours = data.estimatedHours;
-      if (data.remark !== undefined) updateData.remark = data.remark?.trim() || null;
+        const updateData: Record<string, unknown> = {};
+        if (data.projectName !== undefined) updateData.projectName = data.projectName.trim();
+        if (data.projectCode !== undefined) updateData.projectCode = data.projectCode?.trim() || null;
+        if (data.projectType !== undefined) updateData.projectType = data.projectType?.trim() || null;
+        if (data.specialty !== undefined) updateData.specialty = data.specialty?.trim() || null;
+        if (data.projectManagerId !== undefined) updateData.projectManagerId = data.projectManagerId;
+        if (data.assigneeId !== undefined) updateData.assigneeId = data.assigneeId;
+        if (data.status !== undefined) updateData.status = data.status;
+        if (data.priority !== undefined) updateData.priority = data.priority;
+        if (data.plannedStartDate !== undefined) updateData.plannedStartDate = data.plannedStartDate || null;
+        if (data.plannedEndDate !== undefined) updateData.plannedEndDate = data.plannedEndDate || null;
+        if (data.estimatedHours !== undefined) updateData.estimatedHours = data.estimatedHours;
+        if (data.remark !== undefined) updateData.remark = data.remark?.trim() || null;
 
-      await db.update(tasks).set(updateData).where(eq(tasks.id, id));
+        await tx.update(tasks).set(updateData).where(eq(tasks.id, id));
 
-      if (data.status && data.status !== existing[0].status) {
-        await createActivity(db, {
-          type: "status_changed",
-          description: `将任务「${existing[0].projectName}」状态改为${taskStatusLabelMap[data.status]}`,
-          userId,
-          taskId: id,
-        });
-      } else {
-        await createActivity(db, {
-          type: "task_updated",
-          description: `更新了任务「${existing[0].projectName}」`,
-          userId,
-          taskId: id,
-        });
-      }
+        if (data.status && data.status !== existing[0].status) {
+          await createActivity(tx, {
+            type: "status_changed",
+            description: `将任务「${existing[0].projectName}」状态改为${taskStatusLabelMap[data.status]}`,
+            userId,
+            taskId: id,
+            req: ctx.req,
+          });
+        } else {
+          await createActivity(tx, {
+            type: "task_updated",
+            description: `更新了任务「${existing[0].projectName}」`,
+            userId,
+            taskId: id,
+            req: ctx.req,
+          });
+        }
+      });
 
       return { id, ...data };
     }),
@@ -199,19 +213,27 @@ export const taskRouter = createRouter({
     .mutation(async ({ input, ctx }) => {
       const db = getDb();
       const userId = ctx.user.id;
-      const existing = await db.select().from(tasks).where(eq(tasks.id, input.id)).limit(1);
 
-      if (!existing[0]) {
-        throw new Error("Task not found");
-      }
+      await db.transaction(async (tx) => {
+        const existing = await tx
+          .select()
+          .from(tasks)
+          .where(and(eq(tasks.id, input.id), isNull(tasks.deletedAt)))
+          .limit(1);
 
-      await db.update(tasks).set({ status: input.status }).where(eq(tasks.id, input.id));
+        if (!existing[0]) {
+          throw new Error("Task not found");
+        }
 
-      await createActivity(db, {
-        type: "status_changed",
-        description: `将任务「${existing[0].projectName}」状态改为${taskStatusLabelMap[input.status]}`,
-        userId,
-        taskId: input.id,
+        await tx.update(tasks).set({ status: input.status }).where(eq(tasks.id, input.id));
+
+        await createActivity(tx, {
+          type: "status_changed",
+          description: `将任务「${existing[0].projectName}」状态改为${taskStatusLabelMap[input.status]}`,
+          userId,
+          taskId: input.id,
+          req: ctx.req,
+        });
       });
 
       return { id: input.id, status: input.status };
@@ -222,19 +244,27 @@ export const taskRouter = createRouter({
     .mutation(async ({ input, ctx }) => {
       const db = getDb();
       const userId = ctx.user.id;
-      const existing = await db.select().from(tasks).where(eq(tasks.id, input.id)).limit(1);
 
-      if (!existing[0]) {
-        throw new Error("Task not found");
-      }
+      await db.transaction(async (tx) => {
+        const existing = await tx
+          .select()
+          .from(tasks)
+          .where(and(eq(tasks.id, input.id), isNull(tasks.deletedAt)))
+          .limit(1);
 
-      await db.delete(tasks).where(eq(tasks.id, input.id));
+        if (!existing[0]) {
+          throw new Error("Task not found");
+        }
 
-      await createActivity(db, {
-        type: "task_completed",
-        description: `删除了任务「${existing[0].projectName}」`,
-        userId,
-        taskId: input.id,
+        await tx.update(tasks).set({ deletedAt: new Date() }).where(eq(tasks.id, input.id));
+
+        await createActivity(tx, {
+          type: "task_deleted",
+          description: `删除了任务「${existing[0].projectName}」`,
+          userId,
+          taskId: input.id,
+          req: ctx.req,
+        });
       });
 
       return { success: true };

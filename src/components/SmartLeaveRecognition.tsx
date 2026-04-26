@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   AlertCircle,
-  Key,
   Loader2,
   Plus,
   Save,
@@ -11,9 +10,7 @@ import {
   Wand2,
 } from "lucide-react";
 import {
-  loadKimiApiKey,
   loadManagerWorkspaceSettings,
-  saveKimiApiKey,
 } from "@/lib/app-settings";
 import { trpc } from "@/providers/trpc";
 import {
@@ -122,8 +119,6 @@ export default function SmartLeaveRecognition({
   const recognizeMutation = trpc.ai.recognizeLeave.useMutation();
   const createLeaveMutation = trpc.attendance.create.useMutation();
 
-  const [apiKey, setApiKey] = useState("");
-  const [showKeyInput, setShowKeyInput] = useState(false);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [imageBase64, setImageBase64] = useState("");
   const [rawFile, setRawFile] = useState<File | null>(null);
@@ -136,10 +131,6 @@ export default function SmartLeaveRecognition({
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    const saved = loadKimiApiKey();
-    if (saved) {
-      setApiKey(saved);
-    }
     const settings = loadManagerWorkspaceSettings();
     setHighQuality(settings.recognitionHighQuality);
   }, []);
@@ -234,17 +225,10 @@ export default function SmartLeaveRecognition({
       setError("请先上传聊天截图。");
       return;
     }
-    if (!apiKey.trim()) {
-      setShowKeyInput(true);
-      setError("请先配置 OCR API Key。");
-      return;
-    }
-
     setError("");
     try {
       const result = await recognizeMutation.mutateAsync({
         imageBase64,
-        apiKey: apiKey.trim(),
       });
 
       setRawText(result.raw);
@@ -294,13 +278,6 @@ export default function SmartLeaveRecognition({
         return next;
       }),
     );
-  };
-
-  const handleSaveApiKey = () => {
-    if (!apiKey.trim()) return;
-    saveKimiApiKey(apiKey);
-    setShowKeyInput(false);
-    setError("");
   };
 
   const handleSaveAll = async () => {
@@ -386,48 +363,6 @@ export default function SmartLeaveRecognition({
         </DialogHeader>
 
         <div className="space-y-5">
-          <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
-            <div className="flex items-center justify-between gap-4">
-              <div>
-                <p className="text-sm font-medium text-gray-900">OCR API Key</p>
-                <p className="mt-1 text-xs text-gray-500">
-                  默认使用 Kimi 视觉识别，保存后会复用本机缓存。
-                </p>
-              </div>
-              {!showKeyInput && apiKey ? (
-                <button
-                  onClick={() => setShowKeyInput(true)}
-                  className="text-xs font-medium text-blue-600 hover:text-blue-700"
-                >
-                  修改
-                </button>
-              ) : null}
-            </div>
-
-            {showKeyInput || !apiKey ? (
-              <div className="mt-3 flex flex-col gap-3 md:flex-row">
-                <div className="relative w-full">
-                  <Key className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
-                  <input
-                    type="password"
-                    value={apiKey}
-                    onChange={(event) => setApiKey(event.target.value)}
-                    placeholder="sk-..."
-                    className="w-full rounded-lg border border-gray-300 bg-white py-2 pl-9 pr-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-                  />
-                </div>
-                <button
-                  onClick={handleSaveApiKey}
-                  className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
-                >
-                  保存
-                </button>
-              </div>
-            ) : (
-              <p className="mt-3 text-sm text-emerald-700">已配置：sk-****{apiKey.slice(-4)}</p>
-            )}
-          </div>
-
           {!imagePreview ? (
             <div
               onDrop={(event) => {

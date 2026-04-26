@@ -1,6 +1,7 @@
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { createRouter, adminQuery } from "../middleware";
+import { env } from "../lib/env";
 
 type KimiCompletionResponse = {
   choices?: Array<{
@@ -152,7 +153,7 @@ function extractEmployeesFromRows(headers: string[], rows: unknown[][]) {
     if (!name) {
       const fallback = row
         .map((cell) => String(cell ?? "").trim())
-        .find((cell) => /^[\u4e00-\u9fa5]{2,4}$/.test(cell));
+        .find((cell) => /^[一-龥]{2,4}$/.test(cell));
       name = fallback ?? "";
     }
 
@@ -191,7 +192,27 @@ function parseJsonFromContent(content: string): ParsedJson {
   }
 }
 
-async function callKimiVision(imageBase64: string, apiKey: string, prompt: string) {
+function validateBase64Size(base64: string, maxMb = 10) {
+  const approximateBytes = (base64.length * 3) / 4;
+  if (approximateBytes > maxMb * 1024 * 1024) {
+    throw new TRPCError({
+      code: "BAD_REQUEST",
+      message: `图片大小超过 ${maxMb}MB 限制`,
+    });
+  }
+}
+
+async function callKimiVision(imageBase64: string, prompt: string) {
+  const apiKey = env.kimiApiKey;
+  if (!apiKey) {
+    throw new TRPCError({
+      code: "INTERNAL_SERVER_ERROR",
+      message: "Kimi API Key 未配置，请联系管理员",
+    });
+  }
+
+  validateBase64Size(imageBase64, 10);
+
   const response = await fetch("https://api.moonshot.cn/v1/chat/completions", {
     method: "POST",
     headers: {
@@ -247,7 +268,7 @@ function normalizeDate(value: unknown) {
   if (!text) return "";
 
   const match = text
-    .replace(/[./年]/g, "-")
+    .replace(/[.\/年]/g, "-")
     .replace(/[月]/g, "-")
     .replace(/[日]/g, "")
     .match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
@@ -311,8 +332,46 @@ function normalizeBoolean(value: unknown, fallback = false) {
   return fallback;
 }
 
+const employeeSchema = z.object({
+  name: z.string().min(1),
+  role: z.string().default(""),
+  department: z.string().default(""),
+  email: z.string().default(""),
+  phone: z.string().default(""),
+});
+
+const taskSchema = z.object({
+  projectName: z.string().min(1),
+  assigneeName: z.string().default(""),
+  plannedEndDate: z.string().default(""),
+  priority: z.enum(["low", "medium", "high", "urgent"]).default("medium"),
+  status: z.enum(["todo", "in_progress", "review", "done"]).default("todo"),
+  remark: z.string().default(""),
+});
+
+const leaveSchema = z.object({
+  employeeName: z.string().min(1),
+  type: z.enum(["sick", "annual", "personal", "marriage", "maternity", "other"]).default("other"),
+  startDate: z.string().default(""),
+  endDate: z.string().default(""),
+  days: z.number().default(1),
+  reason: z.string().default(""),
+  approved: z.boolean().default(true),
+});
+
+const tripSchema = z.object({
+  employeeName: z.string().min(1),
+  department: z.string().default(""),
+  dispatchStart: z.string().default(""),
+  dispatchEnd: z.string().default(""),
+  location: z.string().default(""),
+  projectCode: z.string().default(""),
+});
+
 function normalizeEmployeeResult(item: unknown) {
   const source = (item ?? {}) as Record<string, unknown>;
+  const parsed = employeeSchema.safeParse(source);
+  if (parsed.success) return parsed.data;
   return {
     name: normalizeString(source.name),
     role: normalizeString(source.role),
@@ -324,6 +383,8 @@ function normalizeEmployeeResult(item: unknown) {
 
 function normalizeTaskResult(item: unknown) {
   const source = (item ?? {}) as Record<string, unknown>;
+  const parsed = taskSchema.safeParse(source);
+  if (parsed.success) return parsed.data;
   return {
     projectName: normalizeString(source.projectName),
     assigneeName: normalizeString(source.assigneeName),
@@ -336,6 +397,13 @@ function normalizeTaskResult(item: unknown) {
 
 function normalizeLeaveResult(item: unknown) {
   const source = (item ?? {}) as Record<string, unknown>;
+  const parsed = leaveSchema.safeParse(source);
+  if (parsed.success) {
+    return {
+      ...parsed.data,
+      days: Math.max(0.5, parsed.data.days),
+    };
+  }
   return {
     employeeName: normalizeString(source.employeeName),
     type: normalizeLeaveType(source.type),
@@ -349,6 +417,8 @@ function normalizeLeaveResult(item: unknown) {
 
 function normalizeTripResult(item: unknown) {
   const source = (item ?? {}) as Record<string, unknown>;
+  const parsed = tripSchema.safeParse(source);
+  if (parsed.success) return parsed.data;
   return {
     employeeName: normalizeString(source.employeeName),
     department: normalizeString(source.department),
@@ -381,6 +451,7 @@ export const aiRecognitionRouter = createRouter({
     .input(z.object({ fileBase64: z.string().min(1) }))
     .mutation(async ({ input }) => {
       try {
+        validateBase64Size(input.fileBase64, 20);
         const XLSX = await import("xlsx");
         const workbook = XLSX.read(input.fileBase64, { type: "base64" });
         const sheet = workbook.Sheets[workbook.SheetNames[0]];
@@ -415,12 +486,11 @@ export const aiRecognitionRouter = createRouter({
     .input(
       z.object({
         imageBase64: z.string().min(1),
-        apiKey: z.string().min(1),
       }),
     )
     .mutation(async ({ input }) => {
       try {
-        const result = await callKimiVision(input.imageBase64, input.apiKey, EMPLOYEE_PROMPT);
+        const result = await callKimiVision(input.imageBase64, EMPLOYEE_PROMPT);
         const employees = ensureArray(result.parsed.employees, "name").map(normalizeEmployeeResult);
         return {
           raw: result.raw,
@@ -438,12 +508,11 @@ export const aiRecognitionRouter = createRouter({
     .input(
       z.object({
         imageBase64: z.string().min(1),
-        apiKey: z.string().min(1),
       }),
     )
     .mutation(async ({ input }) => {
       try {
-        const result = await callKimiVision(input.imageBase64, input.apiKey, TASK_PROMPT);
+        const result = await callKimiVision(input.imageBase64, TASK_PROMPT);
         const tasks = ensureArray(result.parsed.tasks, "projectName").map(normalizeTaskResult);
         return {
           raw: result.raw,
@@ -461,12 +530,11 @@ export const aiRecognitionRouter = createRouter({
     .input(
       z.object({
         imageBase64: z.string().min(1),
-        apiKey: z.string().min(1),
       }),
     )
     .mutation(async ({ input }) => {
       try {
-        const result = await callKimiVision(input.imageBase64, input.apiKey, LEAVE_PROMPT);
+        const result = await callKimiVision(input.imageBase64, LEAVE_PROMPT);
         const leaves = ensureArray(result.parsed.leaves, "employeeName").map(normalizeLeaveResult);
         return {
           raw: result.raw,
@@ -484,14 +552,12 @@ export const aiRecognitionRouter = createRouter({
     .input(
       z.object({
         imageBase64: z.string().min(1),
-        apiKey: z.string().min(1),
       }),
     )
     .mutation(async ({ input }) => {
       try {
         const result = await callKimiVision(
           input.imageBase64,
-          input.apiKey,
           BUSINESS_TRIP_PROMPT,
         );
         const trips = ensureArray(result.parsed.trips, "employeeName").map(normalizeTripResult);

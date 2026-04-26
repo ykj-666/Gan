@@ -51,6 +51,8 @@
     .btn:active { transform: translateY(0); }
     .btn-deploy { background: #2563eb; color: #fff; }
     .btn-deploy:hover { background: #1d4ed8; }
+    .btn-github { background: #111827; color: #fff; }
+    .btn-github:hover { background: #000; }
     .btn-local { background: #f59e0b; color: #fff; }
     .btn-local:hover { background: #d97706; }
     .btn-help { background: #e5e7eb; color: #374151; }
@@ -130,6 +132,9 @@
     <button class="btn btn-deploy" id="btnDeploy" onclick="doDeploy()">
       一键部署到服务器
     </button>
+    <button class="btn btn-github" id="btnGithub" onclick="doGithubSync()">
+      一键同步到 GitHub
+    </button>
     <button class="btn btn-local" id="btnLocal" onclick="doLocal()">
       启动本地开发服务器
     </button>
@@ -143,6 +148,7 @@
     <div class="tip" id="helpBox" style="display:none">
       <strong>首次部署：</strong>点击「一键部署」，首次需要输入 ubuntu 密码<br>
       <strong>更新代码：</strong>修改后再次点击「一键部署」，无需密码<br>
+      <strong>GitHub 同步：</strong>点击「一键同步到 GitHub」，会自动提交当前改动并推送到当前分支<br>
       <strong>安全组：</strong>如果打不开网页，去腾讯云控制台开放 TCP 3000 端口<br>
       <strong>账号：</strong>admin / 密码：admin123
     </div>
@@ -152,7 +158,14 @@
     const statusEl = document.getElementById('status');
     const logEl = document.getElementById('log');
     const btnDeploy = document.getElementById('btnDeploy');
+    const btnGithub = document.getElementById('btnGithub');
     const btnLocal = document.getElementById('btnLocal');
+
+    function setBusy(busy) {
+      btnDeploy.disabled = busy;
+      btnGithub.disabled = busy;
+      btnLocal.disabled = busy;
+    }
 
     function setStatus(text, type) {
       statusEl.textContent = text;
@@ -166,8 +179,7 @@
     }
 
     async function doDeploy() {
-      btnDeploy.disabled = true;
-      btnLocal.disabled = true;
+      setBusy(true);
       setStatus('部署中，请稍候...', 'running');
       logEl.textContent = '';
       appendLog('开始部署...');
@@ -187,20 +199,45 @@
         setStatus('部署失败: ' + err.message, 'error');
         appendLog('错误: ' + err.message);
       } finally {
-        btnDeploy.disabled = false;
-        btnLocal.disabled = false;
+        setBusy(false);
+      }
+    }
+
+    async function doGithubSync() {
+      setBusy(true);
+      setStatus('正在同步到 GitHub...', 'running');
+      logEl.textContent = '';
+      appendLog('开始同步到 GitHub...');
+
+      try {
+        const res = await fetch('/api/github-sync');
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          const text = decoder.decode(value, { stream: true });
+          appendLog(text);
+        }
+        setStatus('GitHub 同步完成！', 'success');
+      } catch (err) {
+        setStatus('GitHub 同步失败: ' + err.message, 'error');
+        appendLog('错误: ' + err.message);
+      } finally {
+        setBusy(false);
       }
     }
 
     async function doLocal() {
-      btnDeploy.disabled = true;
-      btnLocal.disabled = true;
+      setBusy(true);
       setStatus('正在启动本地服务器...', 'running');
       try {
         await fetch('/api/local-dev');
         setStatus('本地服务器已启动: http://localhost:3000', 'success');
       } catch (err) {
         setStatus('启动失败: ' + err.message, 'error');
+      } finally {
+        setBusy(false);
       }
     }
 

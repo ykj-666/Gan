@@ -100,41 +100,48 @@ export function ExceptionsPage() {
   );
 
   const searchLower = keyword.trim().toLowerCase();
-  const overdueTasks = (stats?.managerFocus.overdueTasks ?? []).filter((task) => {
-    const taskDepartment = memberDepartmentMap.get(task.assigneeName) || "未设置部门";
-    const matchDepartment = department === "all" || taskDepartment === department;
-    const matchSearch =
-      !searchLower ||
-      task.projectName.toLowerCase().includes(searchLower) ||
-      (task.projectCode?.toLowerCase().includes(searchLower) ?? false) ||
-      task.assigneeName.toLowerCase().includes(searchLower);
-    return matchDepartment && matchSearch;
-  });
 
-  const activeLeaves = leaveRecords.filter((leave) => {
-    const matchActive = leave.status !== "rejected" && leave.startDate <= today && leave.endDate >= today;
-    const matchDepartment = department === "all" || leave.userDepartment === department;
-    const matchSearch =
-      !searchLower ||
-      leave.userName.toLowerCase().includes(searchLower) ||
-      (leave.userDepartment?.toLowerCase().includes(searchLower) ?? false);
-    return matchActive && matchDepartment && matchSearch;
-  });
+  const overdueTasks = useMemo(() => {
+    return (stats?.managerFocus.overdueTasks ?? []).filter((task) => {
+      const taskDepartment = memberDepartmentMap.get(task.assigneeName) || "未设置部门";
+      const matchDepartment = department === "all" || taskDepartment === department;
+      const matchSearch =
+        !searchLower ||
+        task.projectName.toLowerCase().includes(searchLower) ||
+        (task.projectCode?.toLowerCase().includes(searchLower) ?? false) ||
+        task.assigneeName.toLowerCase().includes(searchLower);
+      return matchDepartment && matchSearch;
+    });
+  }, [stats?.managerFocus.overdueTasks, memberDepartmentMap, department, searchLower]);
 
-  const tripAlerts = tripRecords.filter((trip) => {
-    const cycleDayCount =
-      Math.floor((new Date(trip.cycleEnd).getTime() - new Date(trip.cycleStart).getTime()) / 86400000) +
-      1;
-    const hasAlert =
-      (trip.absenceDays > 0 && !trip.absenceReason?.trim()) ||
-      (trip.subsidyDays > cycleDayCount && !trip.remark?.trim());
-    const matchSearch =
-      !searchLower ||
-      trip.employeeName.toLowerCase().includes(searchLower) ||
-      trip.projectCode.toLowerCase().includes(searchLower) ||
-      trip.location.toLowerCase().includes(searchLower);
-    return hasAlert && matchSearch;
-  });
+  const activeLeaves = useMemo(() => {
+    return leaveRecords.filter((leave) => {
+      const matchActive = leave.status !== "rejected" && leave.startDate <= today && leave.endDate >= today;
+      const matchDepartment = department === "all" || leave.userDepartment === department;
+      const matchSearch =
+        !searchLower ||
+        leave.userName.toLowerCase().includes(searchLower) ||
+        (leave.userDepartment?.toLowerCase().includes(searchLower) ?? false);
+      return matchActive && matchDepartment && matchSearch;
+    });
+  }, [leaveRecords, today, department, searchLower]);
+
+  const tripAlerts = useMemo(() => {
+    return tripRecords.filter((trip) => {
+      const cycleDayCount =
+        Math.floor((new Date(trip.cycleEnd).getTime() - new Date(trip.cycleStart).getTime()) / 86400000) +
+        1;
+      const hasAlert =
+        (trip.absenceDays > 0 && !trip.absenceReason?.trim()) ||
+        (trip.subsidyDays > cycleDayCount && !trip.remark?.trim());
+      const matchSearch =
+        !searchLower ||
+        trip.employeeName.toLowerCase().includes(searchLower) ||
+        trip.projectCode.toLowerCase().includes(searchLower) ||
+        trip.location.toLowerCase().includes(searchLower);
+      return hasAlert && matchSearch;
+    });
+  }, [tripRecords, searchLower]);
 
   const isLoading = !stats || leaveLoading || tripLoading;
 
@@ -182,7 +189,8 @@ export function ExceptionsPage() {
 
         {isLoading ? (
           <div className="rounded-xl border border-gray-200 bg-white p-12 text-center text-gray-400 shadow-sm">
-            加载中...
+            <div className="mx-auto mb-4 h-8 w-8 animate-spin rounded-full border-2 border-blue-600 border-t-transparent" />
+            <p>加载中...</p>
           </div>
         ) : (
           <div className="grid gap-5 xl:grid-cols-3">

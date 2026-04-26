@@ -1,6 +1,5 @@
-﻿import { useCallback, useEffect, useRef, useState } from "react";
+﻿import { useCallback, useRef, useState } from "react";
 import { Loader2, Plus, Save, ScanSearch, Trash2, Upload, X } from "lucide-react";
-import { loadKimiApiKey, saveKimiApiKey } from "@/lib/app-settings";
 import { compressImage } from "@/lib/image";
 import { trpc } from "@/providers/trpc";
 import { StatCard } from "./StatCard";
@@ -33,8 +32,6 @@ export function BusinessTripUploadTab({
   const recognizeMutation = trpc.ai.recognizeBusinessTrip.useMutation();
   const batchCreateMutation = trpc.businessTrip.batchCreate.useMutation();
 
-  const [apiKey, setApiKey] = useState("");
-  const [showKeyInput, setShowKeyInput] = useState(false);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [imageBase64, setImageBase64] = useState("");
   const [trips, setTrips] = useState<TripDraft[]>([]);
@@ -43,12 +40,6 @@ export function BusinessTripUploadTab({
   const [saveError, setSaveError] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
-    const saved = loadKimiApiKey();
-    if (saved) {
-      setApiKey(saved);
-    }
-  }, []);
 
   const handleImage = useCallback(async (file: File) => {
     setError("");
@@ -100,17 +91,10 @@ export function BusinessTripUploadTab({
       setError("请先上传截图");
       return;
     }
-    if (!apiKey.trim()) {
-      setShowKeyInput(true);
-      setError("请先配置 OCR API Key");
-      return;
-    }
-
     setError("");
     try {
       const result = await recognizeMutation.mutateAsync({
         imageBase64,
-        apiKey: apiKey.trim(),
       });
       setRawText(result.raw);
       if (!result.trips.length) {
@@ -134,13 +118,6 @@ export function BusinessTripUploadTab({
     } catch (mutationError: any) {
       setError(mutationError.message || "截图识别失败");
     }
-  };
-
-  const handleSaveApiKey = () => {
-    if (!apiKey.trim()) return;
-    saveKimiApiKey(apiKey);
-    setShowKeyInput(false);
-    setError("");
   };
 
   const handleSaveAll = async () => {
@@ -212,44 +189,6 @@ export function BusinessTripUploadTab({
               </p>
             </div>
 
-            <div className="rounded-xl border border-dashed border-gray-300 bg-gray-50 p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-gray-700">OCR API Key</p>
-                  <p className="mt-1 text-xs text-gray-500">
-                    当前使用 Kimi 视觉识别，请先配置 API Key。
-                  </p>
-                </div>
-                {!showKeyInput && apiKey ? (
-                  <button
-                    onClick={() => setShowKeyInput(true)}
-                    className="text-xs font-medium text-blue-600 hover:text-blue-700"
-                  >
-                    修改
-                  </button>
-                ) : null}
-              </div>
-
-              {showKeyInput || !apiKey ? (
-                <div className="mt-3 flex flex-col gap-3 md:flex-row">
-                  <input
-                    type="password"
-                    value={apiKey}
-                    onChange={(event) => setApiKey(event.target.value)}
-                    placeholder="sk-..."
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-                  />
-                  <button
-                    onClick={handleSaveApiKey}
-                    className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
-                  >
-                    保存
-                  </button>
-                </div>
-              ) : (
-                <p className="mt-3 text-sm text-emerald-700">已配置：sk-****{apiKey.slice(-4)}</p>
-              )}
-            </div>
           </div>
 
           <div className="mt-5">

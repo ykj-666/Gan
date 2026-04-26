@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { History, Search } from "lucide-react";
+import { History, Loader2, Search } from "lucide-react";
 import { trpc } from "@/providers/trpc";
 
 const groupOptions = [
@@ -106,7 +106,10 @@ export function ActivityLogsPage() {
                 {isLoading ? (
                   <tr>
                     <td colSpan={4} className="px-4 py-10 text-center text-gray-400">
-                      正在加载...
+                      <div className="flex items-center justify-center gap-2">
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        <span>正在加载...</span>
+                      </div>
                     </td>
                   </tr>
                 ) : logs.length ? (

@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { ArrowRight, CalendarCheck2, Search, Users } from "lucide-react";
+import { ArrowRight, CalendarCheck2, Loader2, Search, Users } from "lucide-react";
 import { Link, useSearchParams } from "react-router";
 import { trpc } from "@/providers/trpc";
 import { leaveTypeLabelMap } from "@/pages/attendance/helpers";
@@ -95,7 +95,10 @@ export function SearchPage() {
           </div>
         ) : isLoading ? (
           <div className="rounded-xl border border-gray-200 bg-white p-12 text-center text-gray-400 shadow-sm">
-            搜索中...
+            <div className="flex items-center justify-center gap-2">
+              <Loader2 className="h-5 w-5 animate-spin text-blue-600" />
+              <span>搜索中...</span>
+            </div>
           </div>
         ) : (
           <>
